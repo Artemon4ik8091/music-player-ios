@@ -70,6 +70,239 @@ enum AppTheme: Int, CaseIterable {
     }
 }
 
+// MARK: - Гибридный плеер с эквалайзером и автоматическим фолбеком
+class AVAudioPlayerWithEQ: NSObject, AVAudioPlayerDelegate {
+    private var engine: AVAudioEngine?
+    private var playerNode: AVAudioPlayerNode?
+    private var eqNode: AVAudioUnitEQ?
+    private var audioFile: AVAudioFile?
+    
+    // Резервный плеер на случай сбоев или неподдерживаемых форматов
+    private var fallbackPlayer: AVAudioPlayer?
+    private var useFallback: Bool = false
+    
+    var url: URL?
+    var onFinishPlaying: (() -> Void)?
+    
+    private var seekTime: TimeInterval = 0
+    private var totalDuration: TimeInterval = 0
+    private var sampleRate: Double = 44100
+    private var totalFrames: AVAudioFramePosition = 0
+    private var isSeeking = false
+    
+    var volume: Float = 1.0 {
+        didSet {
+            if useFallback {
+                fallbackPlayer?.volume = volume
+            } else {
+                playerNode?.volume = volume
+            }
+        }
+    }
+    
+    var isPlaying: Bool {
+        if useFallback {
+            return fallbackPlayer?.isPlaying ?? false
+        } else {
+            return playerNode?.isPlaying ?? false
+        }
+    }
+    
+    var currentTime: TimeInterval {
+        get {
+            if useFallback {
+                return fallbackPlayer?.currentTime ?? 0
+            } else {
+                guard let playerNode = playerNode else { return seekTime }
+                if let nodeTime = playerNode.lastRenderTime,
+                   let playerTime = playerNode.playerTime(forNodeTime: nodeTime) {
+                    let currentSecs = Double(playerTime.sampleTime) / playerTime.sampleRate
+                    return min(seekTime + currentSecs, totalDuration)
+                }
+                return seekTime
+            }
+        }
+        set {
+            seek(to: newValue)
+        }
+    }
+    
+    var duration: TimeInterval {
+        if useFallback {
+            return fallbackPlayer?.duration ?? 0
+        } else {
+            return totalDuration
+        }
+    }
+    
+    init(contentsOf url: URL) throws {
+        self.url = url
+        super.init()
+        
+        do {
+            self.engine = AVAudioEngine()
+            self.playerNode = AVAudioPlayerNode()
+            self.eqNode = AVAudioUnitEQ(numberOfBands: 10)
+            
+            let file = try AVAudioFile(forReading: url)
+            self.audioFile = file
+            self.totalDuration = Double(file.length) / file.fileFormat.sampleRate
+            self.sampleRate = file.fileFormat.sampleRate
+            self.totalFrames = file.length
+            
+            guard let engine = engine, let playerNode = playerNode, let eqNode = eqNode else {
+                throw NSError(domain: "AVAudioPlayerWithEQ", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create nodes"])
+            }
+            
+            engine.attach(playerNode)
+            engine.attach(eqNode)
+            
+            // Настройка частот для 10-полосного параметрического эквалайзера (ISO-стандарт)
+            let frequencies: [Float] = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
+            let isEqEnabled = UserDefaults.standard.bool(forKey: "eq_enabled")
+            
+            for i in 0..<10 {
+                let band = eqNode.bands[i]
+                band.frequency = frequencies[i]
+                band.filterType = .parametric
+                band.bypass = !isEqEnabled
+                let savedGain = Float(UserDefaults.standard.double(forKey: "eq_band_\(i)"))
+                band.gain = savedGain
+            }
+            
+            let format = file.processingFormat
+            engine.connect(playerNode, to: eqNode, format: format)
+            engine.connect(eqNode, to: engine.mainMixerNode, format: format)
+            
+            try engine.start()
+            self.useFallback = false
+            scheduleFile()
+        } catch {
+            print("AVAudioEngine setup failed, falling back to AVAudioPlayer: \(error)")
+            self.useFallback = true
+            self.fallbackPlayer = try AVAudioPlayer(contentsOf: url)
+            self.fallbackPlayer?.delegate = self
+            self.fallbackPlayer?.prepareToPlay()
+        }
+    }
+    
+    func play() {
+        if useFallback {
+            fallbackPlayer?.play()
+        } else {
+            if let engine = engine, !engine.isRunning {
+                try? engine.start()
+            }
+            playerNode?.play()
+        }
+    }
+    
+    func pause() {
+        if useFallback {
+            fallbackPlayer?.pause()
+        } else {
+            playerNode?.pause()
+        }
+    }
+    
+    func stop() {
+        if useFallback {
+            fallbackPlayer?.stop()
+        } else {
+            playerNode?.stop()
+            engine?.stop()
+        }
+    }
+    
+    func seek(to time: TimeInterval) {
+        if useFallback {
+            fallbackPlayer?.currentTime = time
+        } else {
+            guard let playerNode = playerNode, let file = audioFile else { return }
+            let wasPlaying = playerNode.isPlaying
+            isSeeking = true
+            playerNode.stop()
+            
+            seekTime = max(0, min(time, totalDuration))
+            let startFrame = AVAudioFramePosition(seekTime * sampleRate)
+            let framesToPlay = AVAudioFrameCount(totalFrames - startFrame)
+            
+            if framesToPlay > 100 {
+                // ИСПРАВЛЕНО: переименован аргумент 'atTime' в 'at' в соответствии с требованиями нового SDK Swift/iOS
+                playerNode.scheduleSegment(file, startingFrame: startFrame, frameCount: framesToPlay, at: nil) { [weak self] in
+                    guard let self = self else { return }
+                    if !self.isSeeking {
+                        let current = self.currentTime
+                        if current >= self.totalDuration - 0.5 {
+                            DispatchQueue.main.async {
+                                self.onFinishPlaying?()
+                            }
+                        }
+                    }
+                }
+            }
+            
+            isSeeking = false
+            if wasPlaying {
+                playerNode.play()
+            }
+        }
+    }
+    
+    private func scheduleFile() {
+        guard let playerNode = playerNode, let file = audioFile else { return }
+        playerNode.scheduleFile(file, at: nil) { [weak self] in
+            guard let self = self else { return }
+            if !self.isSeeking {
+                let current = self.currentTime
+                if current >= self.totalDuration - 0.5 {
+                    DispatchQueue.main.async {
+                        self.onFinishPlaying?()
+                    }
+                }
+            }
+        }
+    }
+    
+    func updateEQSettings() {
+        guard !useFallback, let eqNode = eqNode else { return }
+        let isEqEnabled = UserDefaults.standard.bool(forKey: "eq_enabled")
+        for i in 0..<10 {
+            let band = eqNode.bands[i]
+            band.bypass = !isEqEnabled
+            let savedGain = Float(UserDefaults.standard.double(forKey: "eq_band_\(i)"))
+            band.gain = savedGain
+        }
+    }
+    
+    // Делегат на случай фолбек-плеера
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        if flag {
+            self.onFinishPlaying?()
+        }
+    }
+}
+
+// MARK: - Модель пресета эквалайзера
+struct EQPreset: Identifiable, Hashable {
+    var id: String { name }
+    let name: String
+    let gains: [Double] // 10 значений для каждой полосы (-12dB ... +12dB)
+}
+
+// Предустановленные популярные пресеты
+let eqPresets: [EQPreset] = [
+    EQPreset(name: "Обычный (Flat)", gains: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+    EQPreset(name: "Усиление баса", gains: [8.0, 6.5, 5.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+    EQPreset(name: "Усиление вокала", gains: [-3.0, -2.0, -1.0, 1.0, 3.0, 4.5, 4.0, 3.0, 1.5, -1.0]),
+    EQPreset(name: "Акустика", gains: [3.5, 3.0, 1.5, 2.0, 1.0, 1.5, 2.5, 2.0, 1.5, 1.0]),
+    EQPreset(name: "Классика", gains: [5.0, 4.0, 3.0, 2.0, -1.0, -1.0, 0.0, 2.0, 3.5, 4.5]),
+    EQPreset(name: "Электроника", gains: [5.0, 4.0, 2.0, 0.0, -2.0, 2.5, 1.5, 2.0, 4.0, 5.5]),
+    EQPreset(name: "Джаз", gains: [4.0, 3.0, 1.5, 2.0, -1.5, -1.5, 0.0, 1.5, 3.0, 4.0]),
+    EQPreset(name: "Поп", gains: [-2.0, -1.5, 0.0, 2.5, 4.5, 4.0, 2.5, 0.0, -1.5, -2.0]),
+    EQPreset(name: "Рок", gains: [5.0, 4.0, -2.0, -4.0, -1.5, 1.5, 3.5, 4.5, 5.0, 5.0])
+]
+
 // MARK: - Менеджер текстов песен
 class LyricsManager: ObservableObject {
     static let shared = LyricsManager()
@@ -185,17 +418,16 @@ class LyricsManager: ObservableObject {
 }
 
 // MARK: - Менеджер времени воспроизведения
-// Вынесен в отдельный класс, чтобы высокочастотные обновления таймера (20 раз в секунду)
-// не перерисовывали весь `ContentView`, что ломало контекстное меню в Toolbar.
 class PlaybackTime: ObservableObject {
     static let shared = PlaybackTime()
     @Published var currentTime: TimeInterval = 0
 }
 
-// MARK: - 1. Менеджер музыки
-class MusicManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
+// MARK: - Менеджер музыки
+class MusicManager: NSObject, ObservableObject {
     static let shared = MusicManager()
-    var audioPlayer: AVAudioPlayer?
+    
+    @Published var audioPlayer: AVAudioPlayerWithEQ?
     
     @Published var tracks: [Track] = []
     private var shuffledTracks: [Track] = []
@@ -213,7 +445,6 @@ class MusicManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     @Published var currentArtwork: UIImage?
     @Published var trackDuration: TimeInterval = 0
     
-    // Используем отдельный PlaybackTime для текущего времени
     var currentTime: TimeInterval {
         get { PlaybackTime.shared.currentTime }
         set { PlaybackTime.shared.currentTime = newValue }
@@ -369,8 +600,14 @@ class MusicManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         
         let track = activeList[currentTrackIndex]
         do {
-            audioPlayer = try AVAudioPlayer(contentsOf: track.url)
-            audioPlayer?.delegate = self
+            audioPlayer = try AVAudioPlayerWithEQ(contentsOf: track.url)
+            
+            audioPlayer?.onFinishPlaying = { [weak self] in
+                guard let self = self else { return }
+                if self.repeatMode == .one { self.playTrack(at: self.currentTrackIndex) }
+                else if self.repeatMode == .all || self.currentTrackIndex < self.currentList.count - 1 { self.nextTrack() }
+                else { self.isPlaying = false; self.updateNowPlaying() }
+            }
             
             if !UserDefaults.standard.bool(forKey: "controlSystemVolume") {
                 audioPlayer?.volume = volume
@@ -415,16 +652,9 @@ class MusicManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     }
 
     func seek(to time: TimeInterval) {
-        audioPlayer?.currentTime = time
+        audioPlayer?.seek(to: time)
         currentTime = time
         updateNowPlaying()
-    }
-
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        if !flag { return }
-        if repeatMode == .one { playTrack(at: currentTrackIndex) }
-        else if repeatMode == .all || currentTrackIndex < currentList.count - 1 { nextTrack() }
-        else { isPlaying = false; updateNowPlaying() }
     }
 
     func toggleShuffle() { shuffleOn.toggle() }
@@ -432,7 +662,6 @@ class MusicManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     private func startTimer() {
         timer?.cancel()
-        // Уменьшен интервал таймера до 0.05 секунды (20 раз в секунду) для супер-плавного караоке
         timer = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect().sink { [weak self] _ in
             PlaybackTime.shared.currentTime = self?.audioPlayer?.currentTime ?? 0
         }
@@ -514,9 +743,192 @@ class MusicManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
             }
             .store(in: &cancellables)
     }
+    
+    // Обновляет коэффициенты усиления эквалайзера в реальном времени
+    func applyEQChanges() {
+        audioPlayer?.updateEQSettings()
+    }
 }
 
-// MARK: - 2. UI Элементы (Списки и Плееры)
+// MARK: - Вертикальный ползунок эквалайзера в стиле аудио-консоли
+struct VerticalSlider: View {
+    @Binding var value: Double
+    var range: ClosedRange<Double> = -12...12
+    let label: String
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            Text(String(format: "%+.1f", value))
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundColor(.gray)
+                .frame(width: 48)
+            
+            GeometryReader { geo in
+                let height = geo.size.height
+                let pct = CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound))
+                
+                ZStack(alignment: .bottom) {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.1))
+                        .frame(width: 6)
+                    
+                    Capsule()
+                        .fill(Color.red)
+                        .frame(width: 6, height: max(0, min(height, height * pct)))
+                    
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 18, height: 18)
+                        .shadow(color: Color.black.opacity(0.25), radius: 2)
+                        .offset(y: -height * pct + 9)
+                }
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .padding(.vertical, 9)
+                .animation(.interactiveSpring(response: 0.35, dampingFraction: 0.75), value: value)
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { gesture in
+                            let touchY = gesture.location.y
+                            let percent = 1 - min(max(touchY / height, 0), 1)
+                            value = Double(percent) * (range.upperBound - range.lowerBound) + range.lowerBound
+                        }
+                )
+            }
+            .frame(height: 140)
+            
+            Text(label)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+        }
+        .frame(width: 44)
+    }
+}
+
+// MARK: - Экран настройки эквалайзера
+struct EqualizerSettingsView: View {
+    @AppStorage("eq_enabled") private var isEqEnabled: Bool = false
+    @AppStorage("selected_eq_preset") private var selectedPresetName: String = "Обычный (Flat)"
+    @AppStorage("appTheme") private var appTheme: AppTheme = .system
+    
+    // Используем AppStorage типа Double
+    @AppStorage("eq_band_0") private var band0: Double = 0.0
+    @AppStorage("eq_band_1") private var band1: Double = 0.0
+    @AppStorage("eq_band_2") private var band2: Double = 0.0
+    @AppStorage("eq_band_3") private var band3: Double = 0.0
+    @AppStorage("eq_band_4") private var band4: Double = 0.0
+    @AppStorage("eq_band_5") private var band5: Double = 0.0
+    @AppStorage("eq_band_6") private var band6: Double = 0.0
+    @AppStorage("eq_band_7") private var band7: Double = 0.0
+    @AppStorage("eq_band_8") private var band8: Double = 0.0
+    @AppStorage("eq_band_9") private var band9: Double = 0.0
+    
+    private let frequencies = ["32Гц", "64Гц", "125Гц", "250Гц", "500Гц", "1кГц", "2кГц", "4кГц", "8кГц", "16кГц"]
+    
+    // Универсальное реактивное связывание для каждого ползунка
+    private func bandBinding(for index: Int) -> Binding<Double> {
+        Binding(
+            get: {
+                switch index {
+                case 0: return band0
+                case 1: return band1
+                case 2: return band2
+                case 3: return band3
+                case 4: return band4
+                case 5: return band5
+                case 6: return band6
+                case 7: return band7
+                case 8: return band8
+                case 9: return band9
+                default: return 0.0
+                }
+            },
+            set: { newValue in
+                switch index {
+                case 0: band0 = newValue
+                case 1: band1 = newValue
+                case 2: band2 = newValue
+                case 3: band3 = newValue
+                case 4: band4 = newValue
+                case 5: band5 = newValue
+                case 6: band6 = newValue
+                case 7: band7 = newValue
+                case 8: band8 = newValue
+                case 9: band9 = newValue
+                default: break
+                }
+                selectedPresetName = "Вручную"
+                MusicManager.shared.applyEQChanges()
+            }
+        )
+    }
+    
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Включить эквалайзер", isOn: $isEqEnabled)
+                    .onChange(of: isEqEnabled) { _ in
+                        MusicManager.shared.applyEQChanges()
+                    }
+            }
+            
+            if isEqEnabled {
+                Section(header: Text("Параметрические полосы")) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(0..<10, id: \.self) { index in
+                                VerticalSlider(value: bandBinding(for: index), label: frequencies[index])
+                            }
+                        }
+                        .padding(.vertical, 10)
+                    }
+                }
+                
+                Section(header: Text("Популярные пресеты")) {
+                    List {
+                        ForEach(eqPresets) { preset in
+                            HStack {
+                                Text(preset.name)
+                                    .font(.body)
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                if selectedPresetName == preset.name {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.red)
+                                        .font(.subheadline.bold())
+                                }
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                applyPreset(preset)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Эквалайзер")
+        .navigationBarTitleDisplayMode(.inline)
+        .preferredColorScheme(appTheme.colorScheme)
+    }
+    
+    private func applyPreset(_ preset: EQPreset) {
+        withAnimation {
+            selectedPresetName = preset.name
+            band0 = preset.gains[0]
+            band1 = preset.gains[1]
+            band2 = preset.gains[2]
+            band3 = preset.gains[3]
+            band4 = preset.gains[4]
+            band5 = preset.gains[5]
+            band6 = preset.gains[6]
+            band7 = preset.gains[7]
+            band8 = preset.gains[8]
+            band9 = preset.gains[9]
+        }
+        MusicManager.shared.applyEQChanges()
+    }
+}
 
 // MARK: - Синхронизированный просмотр текста
 struct LyricsView: View {
@@ -528,7 +940,7 @@ struct LyricsView: View {
     var onTap: (() -> Void)? = nil
 
     @AppStorage("lyricsFontSize") private var lyricsFontSize: Double = 34.0
-    @AppStorage("karaokeModeEnabled") private var karaokeModeEnabled: Bool = true // Новый тумблер
+    @AppStorage("karaokeModeEnabled") private var karaokeModeEnabled: Bool = true
     
     @State private var isUserScrolling = false
     @State private var resetTask: DispatchWorkItem? = nil
@@ -572,7 +984,6 @@ struct LyricsView: View {
         }
     }
 
-    // Расчет процента заливки для караоке (от 0.0 до 1.0)
     private func progress(for index: Int) -> Double {
         let currentLineTime = lyrics[index].time
         let nextLineTime: Double
@@ -580,20 +991,17 @@ struct LyricsView: View {
         if index + 1 < lyrics.count, lyrics[index + 1].time >= 0 {
             nextLineTime = lyrics[index + 1].time
         } else {
-            nextLineTime = currentLineTime + 8.0 // Если последняя строка, даем ей 8 секунд на заливку
+            nextLineTime = currentLineTime + 8.0
         }
         
-        // Ограничиваем максимальное время заливки одной строки 8 секундами (чтобы в длинных паузах строка не заливалась вечность)
         let duration = min(nextLineTime - currentLineTime, 8.0)
         guard duration > 0 else { return 1.0 }
         
         let p = (currentTime - currentLineTime) / duration
-        return max(0, p) // Убрали min(p, 1.0), чтобы эффект свечения мог плавно уходить за пределы строки
+        return max(0, p)
     }
 
-    // ХАК ДЛЯ ПЕРЕНОСА СТРОК: разбиваем строку на буквы и красим их по отдельности
     private func karaokeText(for line: String, progress: Double, isActiveLine: Bool) -> Text {
-        // Если караоке выключено или строка неактивна — возвращаем обычный текст
         guard isActiveLine && karaokeModeEnabled else {
             return Text(line).foregroundColor(.primary)
         }
@@ -604,30 +1012,25 @@ struct LyricsView: View {
         var result = Text("")
         
         for (index, char) in chars.enumerated() {
-            // Вычисляем, в какой момент времени (в долях от 0 до 1) должна загораться эта буква
             let start = Double(index) / total
             let end = Double(index + 1) / total
             
             let opacity: Double
             if progress <= start {
-                opacity = 0.35 // Буква еще не началась
+                opacity = 0.35
             } else if progress >= end {
-                opacity = 1.0  // Буква уже спета
+                opacity = 1.0
             } else {
-                // Плавное заполнение текущей буквы
                 let fillRatio = (progress - start) / (end - start)
                 opacity = 0.35 + (0.65 * fillRatio)
             }
             
-            // Склеиваем буквы обратно в один текстовый блок.
-            // SwiftUI автоматически и правильно перенесет этот блок на новые строки!
             result = result + Text(String(char)).foregroundColor(Color.primary.opacity(opacity))
         }
         
         return result
     }
     
-    // Специальный слой с блюром, который "бежит" по границе прогресса
     private func karaokeGlowText(for line: String, progress: Double) -> Text {
         let chars = Array(line)
         let total = Double(max(1, chars.count))
@@ -639,15 +1042,12 @@ struct LyricsView: View {
             let end = Double(index + 1) / total
             let center = (start + end) / 2.0
             
-            // Динамическая ширина свечения (не менее 15% строки, или пары символов для коротких строк)
             let glowSpread = max(0.15, 2.5 / total)
             
             let distance = abs(progress - center)
             let opacity: Double
             
-            // Если символ находится в зоне свечения (рядом с текущим progress)
             if distance < glowSpread {
-                // Плавное затухание от центра захвата к краям (чем ближе к 0, тем ярче)
                 opacity = 1.0 - (distance / glowSpread)
             } else {
                 opacity = 0.0
@@ -677,20 +1077,18 @@ struct LyricsView: View {
                         let currentProgress = progress(for: i)
                         
                         ZStack {
-                            // 1. Основной текст (плавная заливка)
                             karaokeText(for: line.text, progress: currentProgress, isActiveLine: isActive)
                             
-                            // 2. Блюр-эффект ("светящийся курсор") на границе заливки
                             if isActive && karaokeModeEnabled {
                                 karaokeGlowText(for: line.text, progress: currentProgress)
                                     .blur(radius: 7)
-                                    .opacity(0.85) // приглушаем интенсивность свечения
-                                    .scaleEffect(1.02) // чуть-чуть увеличиваем для визуального объема
+                                    .opacity(0.85)
+                                    .scaleEffect(1.02)
                             }
                         }
                         .font(.system(size: CGFloat(lyricsFontSize), weight: isActive ? .bold : .regular))
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 30) // Спасительный отступ по краям
+                        .padding(.horizontal, 30)
                         .opacity(opacity(for: i))
                         .blur(radius: blurRadius(for: i))
                         .scaleEffect(scale(for: i))
@@ -743,7 +1141,7 @@ struct LyricsView: View {
     }
 }
 
-// MARK: - Редактор / просмотр текста
+// MARK: - Редактор текста
 struct LyricsEditorView: View {
     @Environment(\.dismiss) var dismiss
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
@@ -1020,7 +1418,6 @@ struct MiniPlayer: View {
     }
 }
 
-// MARK: -  Мини-плеер для иммерсивного режима
 struct ImmersiveBottomBar: View {
     @ObservedObject var manager: MusicManager
     
@@ -1061,7 +1458,7 @@ struct ImmersiveBottomBar: View {
     }
 }
 
-// MARK: - 3. Главный экран
+// MARK: - Главный экран
 struct ContentView: View {
     @StateObject var manager = MusicManager.shared
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
@@ -1073,7 +1470,6 @@ struct ContentView: View {
     
     @State private var shareURL: URL?
     
-    // Состояния для массового поиска текстов
     @State private var isFetchingMassLyrics = false
     @State private var processedTracksCount = 0
     @State private var totalTracksToFetch = 0
@@ -1117,7 +1513,6 @@ struct ContentView: View {
                             }
                             .onDelete(perform: manager.deleteTrack)
                             
-                            // Прозрачный отступ в конце списка, чтобы мини-плеер не перекрывал последние треки
                             Color.clear
                                 .frame(height: 85)
                                 .listRowBackground(Color.clear)
@@ -1126,7 +1521,6 @@ struct ContentView: View {
                         .disabled(isFetchingMassLyrics)
                     }
                     
-                    // Блюр-оверлей при массовом поиске текстов
                     if isFetchingMassLyrics {
                         ZStack {
                             Color.black.opacity(0.4).ignoresSafeArea()
@@ -1165,7 +1559,6 @@ struct ContentView: View {
                                     .font(.title3)
                             }
                             
-                            // Контекстное меню с доп. опциями
                             Menu {
                                 Button(action: fetchLyricsForAll) {
                                     Label("Найти тексты для всех", systemImage: "text.magnifyingglass")
@@ -1181,7 +1574,6 @@ struct ContentView: View {
                         }
                     }
                 }
-                // Алерт с результатами массового поиска
                 .alert("Результаты поиска", isPresented: $showMassFetchResult) {
                     Button("Завершить поиск.", role: .cancel) { }
                 } message: {
@@ -1211,9 +1603,7 @@ struct ContentView: View {
         }
     }
     
-    // MARK: - Логика массового поиска текстов
     private func fetchLyricsForAll() {
-        // Выбираем только те треки, для которых текста еще нет
         let tracksToProcess = manager.tracks.filter { !LyricsManager.shared.hasLyrics(for: $0.url) }
         
         guard !tracksToProcess.isEmpty else {
@@ -1266,12 +1656,14 @@ extension URL: Identifiable {
     public var id: String { self.absoluteString }
 }
 
-// MARK: - 4. Окно настроек
+// MARK: - Окно настроек
 struct SettingsView: View {
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
     @AppStorage("controlSystemVolume") private var controlSystemVolume: Bool = false
     
-    // Настройки для текста песни
+    @AppStorage("eq_enabled") private var isEqEnabled: Bool = false
+    @AppStorage("selected_eq_preset") private var selectedPresetName: String = "Обычный (Flat)"
+    
     @AppStorage("karaokeModeEnabled") private var karaokeModeEnabled: Bool = true
     @AppStorage("autoImmersiveLyricsEnabled") private var autoImmersiveLyricsEnabled: Bool = true
     @AppStorage("autoImmersiveLyricsTimeout") private var autoImmersiveLyricsTimeout: Double = 3.0
@@ -1293,8 +1685,20 @@ struct SettingsView: View {
                     .pickerStyle(SegmentedPickerStyle())
                 }
                 
+                Section(header: Text("Звуковые эффекты")) {
+                    NavigationLink(destination: EqualizerSettingsView()) {
+                        HStack {
+                            Label("Эквалайзер", systemImage: "slider.horizontal.3")
+                                .foregroundColor(.red)
+                            Spacer()
+                            Text(isEqEnabled ? selectedPresetName : "Выкл.")
+                                .foregroundColor(.gray)
+                        }
+                    }
+                }
+                
                 Section(header: Text("Текст песни")) {
-                    Toggle("Караоке-режим", isOn: $karaokeModeEnabled) // Добавлен тумблер караоке
+                    Toggle("Караоке-режим", isOn: $karaokeModeEnabled)
                     Toggle("Иммерсивный режим", isOn: $autoImmersiveLyricsEnabled)
                     if autoImmersiveLyricsEnabled {
                         VStack(alignment: .leading, spacing: 6) {
@@ -1347,7 +1751,7 @@ struct SettingsView: View {
                     HStack {
                         Text("Версия")
                         Spacer()
-                        Text("3.0.0").foregroundColor(.gray) // Обновлена версия
+                        Text("3.1.0").foregroundColor(.gray)
                     }
                     HStack {
                         Text("Разработчик")
@@ -1377,9 +1781,7 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - 5. Полноэкранный плеер
-
-// Кастомный тонкий слайдер для прогресса и громкости (в стиле Apple Music)
+// MARK: - Полноэкранный плеер
 struct ThinSlider: View {
     @Binding var value: Double
     var range: ClosedRange<Double> = 0...1
@@ -1398,7 +1800,7 @@ struct ThinSlider: View {
                     .frame(width: max(0, min(geo.size.width, geo.size.width * pct)), height: trackHeight)
             }
             .position(x: geo.size.width / 2, y: geo.size.height / 2)
-            .contentShape(Rectangle()) // Делаем всю область кликабельной
+            .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { v in
@@ -1407,7 +1809,7 @@ struct ThinSlider: View {
                     }
             )
         }
-        .frame(height: 24) // Удобная высота для нажатия
+        .frame(height: 24)
     }
 }
 
@@ -1415,20 +1817,18 @@ struct FullPlayerView: View {
     @Environment(\.dismiss) var dismiss
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
     
-    // Настройки текста
     @AppStorage("autoImmersiveLyricsEnabled") private var autoImmersiveLyricsEnabled: Bool = true
     @AppStorage("autoImmersiveLyricsTimeout") private var autoImmersiveLyricsTimeout: Double = 3.0
     
     @ObservedObject var manager = MusicManager.shared
     @ObservedObject var lyricsManager = LyricsManager.shared
-    @ObservedObject var playbackTime = PlaybackTime.shared // Наблюдаем за таймером здесь
+    @ObservedObject var playbackTime = PlaybackTime.shared
     
     @State private var showFileInfo = false
     @State private var showShareSheet = false
     @State private var showLyrics = false
     @State private var showLyricsEditor = false
     
-    // Переменные для иммерсивного режима
     @State private var isImmersiveLyrics = false
     @State private var idleTask: DispatchWorkItem? = nil
 
@@ -1475,7 +1875,6 @@ struct FullPlayerView: View {
             let isSmall = geo.size.height < 670
             
             ZStack {
-                // Background
                 Color(UIColor.systemBackground).ignoresSafeArea()
                 if let image = manager.currentArtwork {
                     Image(uiImage: image).resizable().aspectRatio(contentMode: .fill).blur(radius: 40).opacity(0.45).ignoresSafeArea()
@@ -1488,7 +1887,6 @@ struct FullPlayerView: View {
                         Spacer(minLength: isSmall ? 10 : 30)
                     }
                     
-                    // --- ОБЛАСТЬ ОБЛОЖКИ / ТЕКСТА ---
                     let trackURL = manager.currentTrack?.url
                     let lyrics = trackURL.map { lyricsManager.lyrics(for: $0) } ?? []
 
@@ -1594,7 +1992,6 @@ struct FullPlayerView: View {
                         VStack(spacing: 0) {
                             Spacer(minLength: isSmall ? 8 : 15)
                             
-                            // Название и исполнитель (выровнены по левому краю)
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(manager.currentTitle)
@@ -1616,7 +2013,6 @@ struct FullPlayerView: View {
 
                             Spacer(minLength: isSmall ? 10 : 20)
                             
-                            // Прогресс бар
                             VStack(spacing: 4) {
                                 ThinSlider(
                                     value: Binding(
@@ -1635,7 +2031,6 @@ struct FullPlayerView: View {
 
                             Spacer(minLength: isSmall ? 15 : 25)
                             
-                            // Управление воспроизведением
                             HStack(spacing: isSmall ? 40 : 60) {
                                 Button(action: manager.prevTrack) { Image(systemName: "backward.fill").font(.title) }
                                 Button(action: manager.playPause) {
@@ -1647,7 +2042,6 @@ struct FullPlayerView: View {
 
                             Spacer(minLength: isSmall ? 15 : 25)
                             
-                            // Громкость
                             HStack(spacing: 12) {
                                 Image(systemName: "speaker.fill").font(.caption).foregroundColor(.gray)
                                 ThinSlider(
@@ -1662,7 +2056,6 @@ struct FullPlayerView: View {
                             
                             Spacer(minLength: isSmall ? 10 : 20)
                             
-                            // Нижняя панель опций
                             HStack {
                                 Button(action: manager.toggleShuffle) {
                                     Image(systemName: "shuffle").font(.system(size: 18, weight: .medium))
@@ -1755,7 +2148,7 @@ struct FullPlayerView: View {
     }
 }
 
-// MARK: - 6. Экран информации о файле
+// MARK: - Экран информации о файле
 struct FileInfoView: View {
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
     let url: URL
@@ -1852,7 +2245,6 @@ struct AirPlayView: UIViewRepresentable {
     func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
 }
 
-// Панель шэринга (Share Sheet)
 struct ActivityViewController: UIViewControllerRepresentable {
     var activityItems: [Any]
     var applicationActivities: [UIActivity]? = nil

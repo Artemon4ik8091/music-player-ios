@@ -34,6 +34,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		090E8B7E2FEBDC5F00B552A1 /* music-player-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "music-player-Info.plist"; sourceTree = SOURCE_ROOT; };
 		09E3FD202FEB19100073862C /* music player.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "music player.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		09E3FD232FEB19100073862C /* music_playerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = music_playerApp.swift; sourceTree = "<group>"; };
 		09E3FD252FEB19100073862C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -94,6 +95,7 @@
 		09E3FD222FEB19100073862C /* music player */ = {
 			isa = PBXGroup;
 			children = (
+				090E8B7E2FEBDC5F00B552A1 /* music-player-Info.plist */,
 				09E3FD232FEB19100073862C /* music_playerApp.swift */,
 				09E3FD252FEB19100073862C /* ContentView.swift */,
 				09E3FD272FEB19120073862C /* Assets.xcassets */,
@@ -425,11 +427,13 @@
 				DEVELOPMENT_TEAM = K7BNMVXY4T;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "music-player-Info.plist";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -454,11 +458,13 @@
 				DEVELOPMENT_TEAM = K7BNMVXY4T;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "music-player-Info.plist";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
