@@ -85,6 +85,7 @@ class AVAudioPlayerWithEQ: NSObject, AVAudioPlayerDelegate {
     var onFinishPlaying: (() -> Void)?
     
     private var seekTime: TimeInterval = 0
+    private var pausedTime: TimeInterval = 0   // сохраняем позицию при паузе
     private var totalDuration: TimeInterval = 0
     private var sampleRate: Double = 44100
     private var totalFrames: AVAudioFramePosition = 0
@@ -113,13 +114,15 @@ class AVAudioPlayerWithEQ: NSObject, AVAudioPlayerDelegate {
             if useFallback {
                 return fallbackPlayer?.currentTime ?? 0
             } else {
-                guard let playerNode = playerNode else { return seekTime }
+                guard let playerNode = playerNode else { return pausedTime }
                 if let nodeTime = playerNode.lastRenderTime,
                    let playerTime = playerNode.playerTime(forNodeTime: nodeTime) {
                     let currentSecs = Double(playerTime.sampleTime) / playerTime.sampleRate
-                    return min(seekTime + currentSecs, totalDuration)
+                    let computed = min(seekTime + currentSecs, totalDuration)
+                    pausedTime = computed   // всегда держим актуальное значение
+                    return computed
                 }
-                return seekTime
+                return pausedTime   // при паузе — возвращаем сохранённое
             }
         }
         set {
@@ -201,6 +204,7 @@ class AVAudioPlayerWithEQ: NSObject, AVAudioPlayerDelegate {
         if useFallback {
             fallbackPlayer?.pause()
         } else {
+            pausedTime = currentTime   // фиксируем позицию до остановки рендера
             playerNode?.pause()
         }
     }
@@ -224,20 +228,16 @@ class AVAudioPlayerWithEQ: NSObject, AVAudioPlayerDelegate {
             playerNode.stop()
             
             seekTime = max(0, min(time, totalDuration))
+            pausedTime = seekTime   // синхронизируем pausedTime при перемотке
             let startFrame = AVAudioFramePosition(seekTime * sampleRate)
             let framesToPlay = AVAudioFrameCount(totalFrames - startFrame)
             
             if framesToPlay > 100 {
                 // ИСПРАВЛЕНО: переименован аргумент 'atTime' в 'at' в соответствии с требованиями нового SDK Swift/iOS
                 playerNode.scheduleSegment(file, startingFrame: startFrame, frameCount: framesToPlay, at: nil) { [weak self] in
-                    guard let self = self else { return }
-                    if !self.isSeeking {
-                        let current = self.currentTime
-                        if current >= self.totalDuration - 0.5 {
-                            DispatchQueue.main.async {
-                                self.onFinishPlaying?()
-                            }
-                        }
+                    guard let self = self, !self.isSeeking else { return }
+                    DispatchQueue.main.async {
+                        self.onFinishPlaying?()
                     }
                 }
             }
@@ -252,14 +252,9 @@ class AVAudioPlayerWithEQ: NSObject, AVAudioPlayerDelegate {
     private func scheduleFile() {
         guard let playerNode = playerNode, let file = audioFile else { return }
         playerNode.scheduleFile(file, at: nil) { [weak self] in
-            guard let self = self else { return }
-            if !self.isSeeking {
-                let current = self.currentTime
-                if current >= self.totalDuration - 0.5 {
-                    DispatchQueue.main.async {
-                        self.onFinishPlaying?()
-                    }
-                }
+            guard let self = self, !self.isSeeking else { return }
+            DispatchQueue.main.async {
+                self.onFinishPlaying?()
             }
         }
     }
@@ -443,6 +438,7 @@ class MusicManager: NSObject, ObservableObject {
     @Published var repeatMode: RepeatMode = .none
     
     @Published var currentArtwork: UIImage?
+    @Published var gradientColors: [Color] = [Color(.systemGray5), Color(.systemGray3)]
     @Published var trackDuration: TimeInterval = 0
     
     var currentTime: TimeInterval {
@@ -577,6 +573,7 @@ class MusicManager: NSObject, ObservableObject {
             self.tracks.removeAll()
             self.shuffledTracks.removeAll()
             self.currentArtwork = nil
+            self.gradientColors = [Color(.systemGray5), Color(.systemGray4), Color(.systemGray3)]
             self.currentTitle = ""
             self.currentArtist = ""
             self.currentTime = 0
@@ -671,7 +668,13 @@ class MusicManager: NSObject, ObservableObject {
         let asset = AVAsset(url: url)
         self.currentArtwork = nil
         for item in asset.metadata where item.commonKey == .commonKeyArtwork {
-            if let data = item.dataValue { self.currentArtwork = UIImage(data: data) }
+            if let data = item.dataValue, let img = UIImage(data: data) {
+                self.currentArtwork = img
+                self.gradientColors = img.extractGradientColors()
+            }
+        }
+        if self.currentArtwork == nil {
+            self.gradientColors = [Color(.systemGray5), Color(.systemGray4), Color(.systemGray3)]
         }
     }
 
@@ -1781,6 +1784,116 @@ struct SettingsView: View {
     }
 }
 
+// MARK: - Извлечение доминирующих цветов из обложки
+extension UIImage {
+    func extractGradientColors() -> [Color] {
+        let side = 16
+        // Создаём контекст с явным форматом RGBA (premultipliedLast) —
+        // UIGraphicsBeginImageContextWithOptions даёт BGRA, что путает R и B каналы.
+        var raw = [UInt8](repeating: 0, count: side * side * 4)
+        guard let ctx = CGContext(
+            data: &raw,
+            width: side, height: side,
+            bitsPerComponent: 8,
+            bytesPerRow: side * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue  // → R G B A
+        ), let cgImg = self.cgImage else {
+            return [.purple, .blue, .indigo, .cyan]
+        }
+        ctx.draw(cgImg, in: CGRect(x: 0, y: 0, width: side, height: side))
+
+        // Берём точки: 4 угла + центр + середины сторон (7 точек)
+        let pts: [(Int,Int)] = [
+            (1,1), (14,1), (7,7), (1,14), (14,14), (7,1), (7,14)
+        ]
+        return pts.map { (x, y) in
+            let off = (y * side + x) * 4
+            // raw: [R, G, B, A] — теперь порядок гарантирован
+            let r = CGFloat(raw[off])   / 255
+            let g = CGFloat(raw[off+1]) / 255
+            let b = CGFloat(raw[off+2]) / 255
+            var h: CGFloat = 0, s: CGFloat = 0, br: CGFloat = 0, a: CGFloat = 0
+            UIColor(red: r, green: g, blue: b, alpha: 1)
+                .getHue(&h, saturation: &s, brightness: &br, alpha: &a)
+            return Color(UIColor(
+                hue: h,
+                saturation: min(s * 1.35, 1.0),
+                brightness: max(min(br, 0.82), 0.18),
+                alpha: 1
+            ))
+        }
+    }
+}
+
+// MARK: - Анимированный градиентный фон в стиле Apple Music
+struct AppleMusicGradientBackground: View {
+    let colors: [Color]
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
+            AnimatedBlobCanvas(
+                colors: colors,
+                time: timeline.date.timeIntervalSinceReferenceDate
+            )
+        }
+        .ignoresSafeArea()
+    }
+}
+
+private struct AnimatedBlobCanvas: View {
+    let colors: [Color]
+    let time: Double
+
+    // (xSpeed, ySpeed, xPhase, yPhase, sizeMult)
+    // Независимые скорости по X и Y → фигуры Лиссажу вместо кругов
+    private let configs: [(Double, Double, Double, Double, Double)] = [
+        (0.41, 0.29, 0.00, 0.00, 1.15),
+        (0.57, 0.38, 2.09, 1.57, 1.00),
+        (0.33, 0.63, 4.19, 0.79, 1.25),
+        (0.69, 0.44, 1.05, 3.14, 0.90),
+        (0.48, 0.71, 3.14, 2.36, 1.05),
+        (0.62, 0.52, 5.24, 4.71, 0.95),
+        (0.36, 0.59, 2.62, 1.05, 1.10),
+    ]
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let base = max(w, h) * 0.50
+
+            ZStack {
+                // Тёмная подложка для контраста
+                Color.black.opacity(0.25)
+
+                // Базовый тон — первый цвет насыщенно
+                colors.first.map { $0.opacity(0.80) }
+
+                ForEach(0..<min(configs.count, max(colors.count, 1)), id: \.self) { i in
+                    let cfg = configs[i]
+                    let color = colors[i % colors.count]
+                    let xPos = w * 0.5 + w * 0.55 * CGFloat(sin(time * cfg.0 + cfg.2))
+                    let yPos = h * 0.5 + h * 0.58 * CGFloat(sin(time * cfg.1 + cfg.3))
+                    let r = base * CGFloat(cfg.4)
+
+                    RadialGradient(
+                        colors: [color, color.opacity(0.0)],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: r
+                    )
+                    .frame(width: r * 2, height: r * 2)
+                    .position(x: xPos, y: yPos)
+                    .blendMode(.normal)
+                }
+            }
+            .blur(radius: 28)   // ← было 55, теперь цвета чёткие
+        }
+        .ignoresSafeArea()
+    }
+}
+
 // MARK: - Полноэкранный плеер
 struct ThinSlider: View {
     @Binding var value: Double
@@ -1815,7 +1928,6 @@ struct ThinSlider: View {
 
 struct FullPlayerView: View {
     @Environment(\.dismiss) var dismiss
-    @AppStorage("appTheme") private var appTheme: AppTheme = .system
     
     @AppStorage("autoImmersiveLyricsEnabled") private var autoImmersiveLyricsEnabled: Bool = true
     @AppStorage("autoImmersiveLyricsTimeout") private var autoImmersiveLyricsTimeout: Double = 3.0
@@ -1876,10 +1988,9 @@ struct FullPlayerView: View {
             
             ZStack {
                 Color(UIColor.systemBackground).ignoresSafeArea()
-                if let image = manager.currentArtwork {
-                    Image(uiImage: image).resizable().aspectRatio(contentMode: .fill).blur(radius: 40).opacity(0.45).ignoresSafeArea()
-                }
-                BlurView(style: .systemThinMaterial).opacity(0.8).ignoresSafeArea()
+                AppleMusicGradientBackground(colors: manager.gradientColors)
+                    .animation(.easeInOut(duration: 1.8), value: manager.currentTrackIndex)
+                BlurView(style: .systemThinMaterial).opacity(0.30).ignoresSafeArea()
                 
                 VStack(spacing: 0) {
                     if !isImmersiveLyrics {
@@ -2137,7 +2248,7 @@ struct FullPlayerView: View {
             manager.syncVolumeWithCurrentMode()
             resetIdleTimer()
         }
-        .preferredColorScheme(appTheme.colorScheme)
+        .preferredColorScheme(.dark)
     }
     
     func formatTime(_ t: TimeInterval) -> String {
