@@ -20,7 +20,7 @@ struct Track: Identifiable, Hashable {
 // MARK: - Модель строки текста
 struct LyricLine: Identifiable, Codable {
     var id = UUID()
-    var time: TimeInterval   // < 0 = без временной метки
+    var time: TimeInterval
     var text: String
 }
 
@@ -77,7 +77,6 @@ class AVAudioPlayerWithEQ: NSObject, AVAudioPlayerDelegate {
     private var eqNode: AVAudioUnitEQ?
     private var audioFile: AVAudioFile?
     
-    // Резервный плеер на случай сбоев или неподдерживаемых форматов
     private var fallbackPlayer: AVAudioPlayer?
     private var useFallback: Bool = false
     
@@ -85,7 +84,7 @@ class AVAudioPlayerWithEQ: NSObject, AVAudioPlayerDelegate {
     var onFinishPlaying: (() -> Void)?
     
     private var seekTime: TimeInterval = 0
-    private var pausedTime: TimeInterval = 0   // сохраняем позицию при паузе
+    private var pausedTime: TimeInterval = 0
     private var totalDuration: TimeInterval = 0
     private var sampleRate: Double = 44100
     private var totalFrames: AVAudioFramePosition = 0
@@ -119,10 +118,10 @@ class AVAudioPlayerWithEQ: NSObject, AVAudioPlayerDelegate {
                    let playerTime = playerNode.playerTime(forNodeTime: nodeTime) {
                     let currentSecs = Double(playerTime.sampleTime) / playerTime.sampleRate
                     let computed = min(seekTime + currentSecs, totalDuration)
-                    pausedTime = computed   // всегда держим актуальное значение
+                    pausedTime = computed
                     return computed
                 }
-                return pausedTime   // при паузе — возвращаем сохранённое
+                return pausedTime
             }
         }
         set {
@@ -160,7 +159,6 @@ class AVAudioPlayerWithEQ: NSObject, AVAudioPlayerDelegate {
             engine.attach(playerNode)
             engine.attach(eqNode)
             
-            // Настройка частот для 10-полосного параметрического эквалайзера (ISO-стандарт)
             let frequencies: [Float] = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
             let isEqEnabled = UserDefaults.standard.bool(forKey: "eq_enabled")
             
@@ -204,7 +202,7 @@ class AVAudioPlayerWithEQ: NSObject, AVAudioPlayerDelegate {
         if useFallback {
             fallbackPlayer?.pause()
         } else {
-            pausedTime = currentTime   // фиксируем позицию до остановки рендера
+            pausedTime = currentTime
             playerNode?.pause()
         }
     }
@@ -228,16 +226,20 @@ class AVAudioPlayerWithEQ: NSObject, AVAudioPlayerDelegate {
             playerNode.stop()
             
             seekTime = max(0, min(time, totalDuration))
-            pausedTime = seekTime   // синхронизируем pausedTime при перемотке
+            pausedTime = seekTime
             let startFrame = AVAudioFramePosition(seekTime * sampleRate)
             let framesToPlay = AVAudioFrameCount(totalFrames - startFrame)
             
             if framesToPlay > 100 {
-                // ИСПРАВЛЕНО: переименован аргумент 'atTime' в 'at' в соответствии с требованиями нового SDK Swift/iOS
-                playerNode.scheduleSegment(file, startingFrame: startFrame, frameCount: framesToPlay, at: nil) { [weak self] in
-                    guard let self = self, !self.isSeeking else { return }
-                    DispatchQueue.main.async {
-                        self.onFinishPlaying?()
+                if #available(iOS 15.0, *) {
+                    playerNode.scheduleSegment(file, startingFrame: startFrame, frameCount: framesToPlay, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+                        guard let self = self, !self.isSeeking else { return }
+                        DispatchQueue.main.async { self.onFinishPlaying?() }
+                    }
+                } else {
+                    playerNode.scheduleSegment(file, startingFrame: startFrame, frameCount: framesToPlay, at: nil) { [weak self] in
+                        guard let self = self, !self.isSeeking else { return }
+                        DispatchQueue.main.async { self.onFinishPlaying?() }
                     }
                 }
             }
@@ -251,10 +253,15 @@ class AVAudioPlayerWithEQ: NSObject, AVAudioPlayerDelegate {
     
     private func scheduleFile() {
         guard let playerNode = playerNode, let file = audioFile else { return }
-        playerNode.scheduleFile(file, at: nil) { [weak self] in
-            guard let self = self, !self.isSeeking else { return }
-            DispatchQueue.main.async {
-                self.onFinishPlaying?()
+        if #available(iOS 15.0, *) {
+            playerNode.scheduleFile(file, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+                guard let self = self, !self.isSeeking else { return }
+                DispatchQueue.main.async { self.onFinishPlaying?() }
+            }
+        } else {
+            playerNode.scheduleFile(file, at: nil) { [weak self] in
+                guard let self = self, !self.isSeeking else { return }
+                DispatchQueue.main.async { self.onFinishPlaying?() }
             }
         }
     }
@@ -270,7 +277,6 @@ class AVAudioPlayerWithEQ: NSObject, AVAudioPlayerDelegate {
         }
     }
     
-    // Делегат на случай фолбек-плеера
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         if flag {
             self.onFinishPlaying?()
@@ -278,14 +284,12 @@ class AVAudioPlayerWithEQ: NSObject, AVAudioPlayerDelegate {
     }
 }
 
-// MARK: - Модель пресета эквалайзера
 struct EQPreset: Identifiable, Hashable {
     var id: String { name }
     let name: String
-    let gains: [Double] // 10 значений для каждой полосы (-12dB ... +12dB)
+    let gains: [Double]
 }
 
-// Предустановленные популярные пресеты
 let eqPresets: [EQPreset] = [
     EQPreset(name: "Обычный (Flat)", gains: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
     EQPreset(name: "Усиление баса", gains: [8.0, 6.5, 5.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
@@ -298,7 +302,6 @@ let eqPresets: [EQPreset] = [
     EQPreset(name: "Рок", gains: [5.0, 4.0, -2.0, -4.0, -1.5, 1.5, 3.5, 4.5, 5.0, 5.0])
 ]
 
-// MARK: - Менеджер текстов песен
 class LyricsManager: ObservableObject {
     static let shared = LyricsManager()
     private let storageKey = "trackLyrics_v1"
@@ -320,7 +323,6 @@ class LyricsManager: ObservableObject {
         save()
     }
 
-    // MARK: LRC Parser
     func parseLRC(_ content: String) -> [LyricLine] {
         var lines: [LyricLine] = []
         let timeRx = try! NSRegularExpression(pattern: #"\[(\d{2}):(\d{2})[\.:](\d{2,3})\]"#)
@@ -355,7 +357,6 @@ class LyricsManager: ObservableObject {
         }
     }
 
-    // MARK: Export LRC text
     func lrcText(for lines: [LyricLine]) -> String {
         lines.map { l in
             guard l.time >= 0 else { return l.text }
@@ -379,7 +380,6 @@ class LyricsManager: ObservableObject {
         store = dict
     }
     
-    // MARK: Fetch Lyrics from Online Service (LRCLIB)
     func fetchLyricsFromLRCLib(title: String, artist: String) async -> String? {
         var cleanTitle = title
         for ext in [".mp3", ".m4a", ".wav", ".flac", ".aac"] {
@@ -412,13 +412,11 @@ class LyricsManager: ObservableObject {
     }
 }
 
-// MARK: - Менеджер времени воспроизведения
 class PlaybackTime: ObservableObject {
     static let shared = PlaybackTime()
     @Published var currentTime: TimeInterval = 0
 }
 
-// MARK: - Менеджер музыки
 class MusicManager: NSObject, ObservableObject {
     static let shared = MusicManager()
     
@@ -597,13 +595,25 @@ class MusicManager: NSObject, ObservableObject {
         
         let track = activeList[currentTrackIndex]
         do {
+            audioPlayer?.onFinishPlaying = nil // Clear old callback securely
+            audioPlayer?.stop() // Prevent ghostly double playback
+            
             audioPlayer = try AVAudioPlayerWithEQ(contentsOf: track.url)
             
             audioPlayer?.onFinishPlaying = { [weak self] in
                 guard let self = self else { return }
-                if self.repeatMode == .one { self.playTrack(at: self.currentTrackIndex) }
-                else if self.repeatMode == .all || self.currentTrackIndex < self.currentList.count - 1 { self.nextTrack() }
-                else { self.isPlaying = false; self.updateNowPlaying() }
+                if self.repeatMode == .one {
+                    self.seek(to: 0)
+                    self.audioPlayer?.play()
+                    self.isPlaying = true
+                }
+                else if self.repeatMode == .all || self.currentTrackIndex < self.currentList.count - 1 {
+                    self.nextTrack()
+                }
+                else {
+                    self.isPlaying = false
+                    self.updateNowPlaying()
+                }
             }
             
             if !UserDefaults.standard.bool(forKey: "controlSystemVolume") {
@@ -630,6 +640,10 @@ class MusicManager: NSObject, ObservableObject {
             audioPlayer?.pause()
             isPlaying = false
         } else {
+            // Fix: restart track from 0 if it's over
+            if currentTime >= trackDuration - 0.5 && trackDuration > 0 {
+                seek(to: 0)
+            }
             audioPlayer?.play()
             isPlaying = true
             startTimer()
@@ -747,11 +761,11 @@ class MusicManager: NSObject, ObservableObject {
             .store(in: &cancellables)
     }
     
-    // Обновляет коэффициенты усиления эквалайзера в реальном времени
     func applyEQChanges() {
         audioPlayer?.updateEQSettings()
     }
 }
+
 
 // MARK: - Вертикальный ползунок эквалайзера в стиле аудио-консоли
 struct VerticalSlider: View {
@@ -814,7 +828,6 @@ struct EqualizerSettingsView: View {
     @AppStorage("selected_eq_preset") private var selectedPresetName: String = "Обычный (Flat)"
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
     
-    // Используем AppStorage типа Double
     @AppStorage("eq_band_0") private var band0: Double = 0.0
     @AppStorage("eq_band_1") private var band1: Double = 0.0
     @AppStorage("eq_band_2") private var band2: Double = 0.0
@@ -828,37 +841,22 @@ struct EqualizerSettingsView: View {
     
     private let frequencies = ["32Гц", "64Гц", "125Гц", "250Гц", "500Гц", "1кГц", "2кГц", "4кГц", "8кГц", "16кГц"]
     
-    // Универсальное реактивное связывание для каждого ползунка
     private func bandBinding(for index: Int) -> Binding<Double> {
         Binding(
             get: {
                 switch index {
-                case 0: return band0
-                case 1: return band1
-                case 2: return band2
-                case 3: return band3
-                case 4: return band4
-                case 5: return band5
-                case 6: return band6
-                case 7: return band7
-                case 8: return band8
-                case 9: return band9
-                default: return 0.0
+                case 0: return band0; case 1: return band1; case 2: return band2
+                case 3: return band3; case 4: return band4; case 5: return band5
+                case 6: return band6; case 7: return band7; case 8: return band8
+                case 9: return band9; default: return 0.0
                 }
             },
             set: { newValue in
                 switch index {
-                case 0: band0 = newValue
-                case 1: band1 = newValue
-                case 2: band2 = newValue
-                case 3: band3 = newValue
-                case 4: band4 = newValue
-                case 5: band5 = newValue
-                case 6: band6 = newValue
-                case 7: band7 = newValue
-                case 8: band8 = newValue
-                case 9: band9 = newValue
-                default: break
+                case 0: band0 = newValue; case 1: band1 = newValue; case 2: band2 = newValue
+                case 3: band3 = newValue; case 4: band4 = newValue; case 5: band5 = newValue
+                case 6: band6 = newValue; case 7: band7 = newValue; case 8: band8 = newValue
+                case 9: band9 = newValue; default: break
                 }
                 selectedPresetName = "Вручную"
                 MusicManager.shared.applyEQChanges()
@@ -918,20 +916,15 @@ struct EqualizerSettingsView: View {
     private func applyPreset(_ preset: EQPreset) {
         withAnimation {
             selectedPresetName = preset.name
-            band0 = preset.gains[0]
-            band1 = preset.gains[1]
-            band2 = preset.gains[2]
-            band3 = preset.gains[3]
-            band4 = preset.gains[4]
-            band5 = preset.gains[5]
-            band6 = preset.gains[6]
-            band7 = preset.gains[7]
-            band8 = preset.gains[8]
+            band0 = preset.gains[0]; band1 = preset.gains[1]; band2 = preset.gains[2]
+            band3 = preset.gains[3]; band4 = preset.gains[4]; band5 = preset.gains[5]
+            band6 = preset.gains[6]; band7 = preset.gains[7]; band8 = preset.gains[8]
             band9 = preset.gains[9]
         }
         MusicManager.shared.applyEQChanges()
     }
 }
+
 
 // MARK: - Синхронизированный просмотр текста
 struct LyricsView: View {
@@ -960,7 +953,7 @@ struct LyricsView: View {
     private var displayIndex: Int? { isUserScrolling ? nil : activeIndex }
 
     private func opacity(for i: Int) -> Double {
-        guard let cur = displayIndex else { return 0.75 }
+        guard let cur = displayIndex else { return 0.65 }
         switch abs(i - cur) {
         case 0: return 1.0
         case 1: return 0.5
@@ -1011,7 +1004,6 @@ struct LyricsView: View {
         
         let chars = Array(line)
         let total = Double(max(1, chars.count))
-        
         var result = Text("")
         
         for (index, char) in chars.enumerated() {
@@ -1030,14 +1022,12 @@ struct LyricsView: View {
             
             result = result + Text(String(char)).foregroundColor(Color.primary.opacity(opacity))
         }
-        
         return result
     }
     
     private func karaokeGlowText(for line: String, progress: Double) -> Text {
         let chars = Array(line)
         let total = Double(max(1, chars.count))
-        
         var result = Text("")
         
         for (index, char) in chars.enumerated() {
@@ -1046,19 +1036,11 @@ struct LyricsView: View {
             let center = (start + end) / 2.0
             
             let glowSpread = max(0.15, 2.5 / total)
-            
             let distance = abs(progress - center)
-            let opacity: Double
-            
-            if distance < glowSpread {
-                opacity = 1.0 - (distance / glowSpread)
-            } else {
-                opacity = 0.0
-            }
+            let opacity: Double = distance < glowSpread ? 1.0 - (distance / glowSpread) : 0.0
             
             result = result + Text(String(char)).foregroundColor(Color.primary.opacity(opacity))
         }
-        
         return result
     }
 
@@ -1074,7 +1056,7 @@ struct LyricsView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
-                LazyVStack(spacing: 18) {
+                LazyVStack(spacing: 24) {
                     ForEach(Array(lyrics.enumerated()), id: \.element.id) { i, line in
                         let isActive = displayIndex == i
                         let currentProgress = progress(for: i)
@@ -1089,28 +1071,29 @@ struct LyricsView: View {
                                     .scaleEffect(1.02)
                             }
                         }
-                        .font(.system(size: CGFloat(lyricsFontSize), weight: isActive ? .bold : .regular))
-                        .multilineTextAlignment(.center)
+                        .font(.system(size: CGFloat(lyricsFontSize), weight: .heavy, design: .rounded))
+                        .lineSpacing(4)
+                        .multilineTextAlignment(.leading)
                         .padding(.horizontal, 30)
                         .opacity(opacity(for: i))
                         .blur(radius: blurRadius(for: i))
-                        .scaleEffect(scale(for: i))
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        .scaleEffect(scale(for: i), anchor: .leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .id(line.id)
                         .animation(.spring(response: 0.38, dampingFraction: 0.78), value: displayIndex)
                         .onTapGesture {
-                                guard line.time >= 0 else {
-                                    onTap?()
-                                    return
-                                }
-                                onSeek?(line.time)
+                            guard line.time >= 0 else {
                                 onTap?()
-                                resetTask?.cancel()
-                                withAnimation(.easeInOut(duration: 0.3)) { isUserScrolling = false }
+                                return
                             }
+                            onSeek?(line.time)
+                            onTap?()
+                            resetTask?.cancel()
+                            withAnimation(.easeInOut(duration: 0.3)) { isUserScrolling = false }
+                        }
                     }
                 }
-                .padding(.vertical, 44)
+                .padding(.vertical, 80)
                 .frame(maxWidth: .infinity, minHeight: UIScreen.main.bounds.height)
             }
             .background(Color.clear.contentShape(Rectangle()).onTapGesture { onTap?() })
@@ -1130,7 +1113,7 @@ struct LyricsView: View {
             )
             .onChange(of: activeIndex) { newIndex in
                 guard !isUserScrolling, let idx = newIndex, lyrics.indices.contains(idx) else { return }
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
                     proxy.scrollTo(lyrics[idx].id, anchor: .center)
                 }
             }
@@ -1339,6 +1322,7 @@ struct LyricsEditorView: View {
     }
 }
 
+
 struct TrackRow: View {
     let track: Track
     let isCurrent: Bool
@@ -1347,20 +1331,23 @@ struct TrackRow: View {
     @ObservedObject private var lyricsManager = LyricsManager.shared
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 16) {
             ZStack {
-                RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.1))
-                if let image = artwork { Image(uiImage: image).resizable().aspectRatio(contentMode: .fill) }
-                else { Image(systemName: "music.note").foregroundColor(.gray).font(.system(size: 14)) }
+                RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.15))
+                if let image = artwork {
+                    Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
+                } else {
+                    Image(systemName: "music.note").foregroundColor(.gray).font(.system(size: 18))
+                }
                 if lyricsManager.hasLyrics(for: track.url) {
                     VStack {
                         HStack {
                             Spacer()
-                            Image(systemName: "text.alignleft")
+                            Image(systemName: "quote.bubble.fill")
                                 .font(.system(size: 8, weight: .bold))
                                 .foregroundColor(.white)
-                                .padding(3)
-                                .background(Color.red.opacity(0.8))
+                                .padding(4)
+                                .background(Color.black.opacity(0.6))
                                 .clipShape(Circle())
                         }
                         Spacer()
@@ -1368,15 +1355,25 @@ struct TrackRow: View {
                     .padding(3)
                 }
             }
-            .frame(width: 45, height: 45).cornerRadius(6).clipped()
+            .frame(width: 50, height: 50).cornerRadius(8).clipped()
+            .shadow(color: Color.black.opacity(0.1), radius: 3, y: 2)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(track.title).font(.body).foregroundColor(isCurrent ? .red : .primary).lineLimit(1)
-                Text(track.artist).font(.caption).foregroundColor(.gray).lineLimit(1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(track.title)
+                    .font(.system(size: 16, weight: isCurrent ? .semibold : .regular))
+                    .foregroundColor(isCurrent ? .red : .primary)
+                    .lineLimit(1)
+                Text(track.artist)
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
             }
             Spacer()
-            if isCurrent && isPlaying { Image(systemName: "waveform").foregroundColor(.red) }
+            if isCurrent && isPlaying {
+                Image(systemName: "waveform").foregroundColor(.red)
+            }
         }
+        .padding(.vertical, 4)
         .onAppear {
             DispatchQueue.global(qos: .userInteractive).async {
                 let asset = AVAsset(url: track.url)
@@ -1390,6 +1387,7 @@ struct TrackRow: View {
     }
 }
 
+
 struct MiniPlayer: View {
     @ObservedObject var manager = MusicManager.shared
     @Binding var showFullPlayer: Bool
@@ -1397,24 +1395,42 @@ struct MiniPlayer: View {
     var body: some View {
         VStack(spacing: 0) {
             Divider().background(Color.primary.opacity(0.1))
-            HStack(spacing: 12) {
+            HStack(spacing: 14) {
                 ZStack {
-                    if let image = manager.currentArtwork { Image(uiImage: image).resizable().aspectRatio(contentMode: .fill) }
-                    else { Color.primary.opacity(0.1); Image(systemName: "music.note").foregroundColor(.gray) }
+                    if let image = manager.currentArtwork {
+                        Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
+                    } else {
+                        Color.primary.opacity(0.1)
+                        Image(systemName: "music.note").foregroundColor(.gray)
+                    }
                 }
-                .frame(width: 48, height: 48).cornerRadius(4).clipped()
+                .frame(width: 48, height: 48).cornerRadius(6).clipped()
+                .shadow(color: manager.gradientColors.first?.opacity(0.4) ?? .black.opacity(0.2), radius: 5, y: 3)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(manager.currentTitle).font(.system(size: 15, weight: .medium)).lineLimit(1)
-                    Text(manager.currentArtist).font(.system(size: 13)).foregroundColor(.gray).lineLimit(1)
+                    Text(manager.currentTitle)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .lineLimit(1)
+                    Text(manager.currentArtist)
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
                 }
                 Spacer()
                 HStack(spacing: 20) {
-                    Button(action: manager.playPause) { Image(systemName: manager.isPlaying ? "pause.fill" : "play.fill").font(.title2) }
-                    Button(action: manager.nextTrack) { Image(systemName: "forward.fill").font(.title2) }
-                }.foregroundColor(.primary)
+                    Button(action: manager.playPause) {
+                        Image(systemName: manager.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 22))
+                    }
+                    Button(action: manager.nextTrack) {
+                        Image(systemName: "forward.fill")
+                            .font(.system(size: 22))
+                    }
+                }
+                .foregroundColor(.primary)
             }
-            .padding(.horizontal, 20).frame(height: 72)
+            .padding(.horizontal, 20).frame(height: 64)
+            .padding(.bottom, 8)
         }
         .background(BlurView(style: .systemChromeMaterial).ignoresSafeArea(edges: .bottom))
         .onTapGesture { showFullPlayer = true }
@@ -1461,6 +1477,7 @@ struct ImmersiveBottomBar: View {
     }
 }
 
+
 // MARK: - Главный экран
 struct ContentView: View {
     @StateObject var manager = MusicManager.shared
@@ -1486,9 +1503,26 @@ struct ContentView: View {
                     Color(UIColor.systemBackground).ignoresSafeArea()
                     
                     if manager.tracks.isEmpty {
-                        VStack {
-                            Image(systemName: "music.note.list").font(.system(size: 60)).foregroundColor(.gray)
-                            Text("Медиатека пуста").foregroundColor(.gray).padding()
+                        ZStack {
+                            VStack(spacing: 16) {
+                                Image(systemName: "music.note.list")
+                                    .font(.system(size: 70, weight: .light))
+                                    .foregroundColor(.secondary)
+                                Text("Медиатека пуста")
+                                    .font(.title2.weight(.semibold))
+                                    .foregroundColor(.primary)
+                                Text("Добавьте музыку, нажав на '+'")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            VStack {
+                                Spacer()
+                                Text("by aswer.")
+                                    .font(.system(size: 10, weight: .regular, design: .rounded))
+                                    .foregroundColor(.secondary.opacity(0.4))
+                                    .padding(.bottom, 20)
+                            }
                         }
                     } else {
                         List {
@@ -1513,12 +1547,23 @@ struct ContentView: View {
                                         Button { shareURL = track.url } label: { Label("Поделиться", systemImage: "square.and.arrow.up") }.tint(.blue)
                                     }
                                     .listRowBackground(Color.clear)
+                                    .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
+                                    .listRowSeparator(.visible)
                             }
                             .onDelete(perform: manager.deleteTrack)
                             
                             Color.clear
                                 .frame(height: 85)
                                 .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                
+                            Text("by aswer.")
+                                .font(.system(size: 10, weight: .regular, design: .rounded))
+                                .foregroundColor(.secondary.opacity(0.4))
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .padding(.bottom, 20)
                         }
                         .listStyle(.plain)
                         .disabled(isFetchingMassLyrics)
@@ -1551,11 +1596,11 @@ struct ContentView: View {
                         .zIndex(100)
                     }
                 }
-                .navigationTitle("Музыка")
+                .navigationTitle("Медиатека")
                 .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        HStack(spacing: 12) {
+                        HStack(spacing: 16) {
                             Button(action: { showFilePicker = true }) {
                                 Image(systemName: "plus.circle.fill")
                                     .foregroundColor(.red)
@@ -1578,7 +1623,7 @@ struct ContentView: View {
                     }
                 }
                 .alert("Результаты поиска", isPresented: $showMassFetchResult) {
-                    Button("Завершить поиск.", role: .cancel) { }
+                    Button("Завершить поиск", role: .cancel) { }
                 } message: {
                     if totalTracksToFetch == 0 {
                         Text("Для всех твоих треков тексты уже есть.")
@@ -1658,6 +1703,7 @@ struct ContentView: View {
 extension URL: Identifiable {
     public var id: String { self.absoluteString }
 }
+
 
 // MARK: - Окно настроек
 struct SettingsView: View {
@@ -1749,19 +1795,6 @@ struct SettingsView: View {
                         Text("Очистить медиатеку")
                     }
                 }
-                
-                Section(header: Text("О приложении")) {
-                    HStack {
-                        Text("Версия")
-                        Spacer()
-                        Text("3.1.0").foregroundColor(.gray)
-                    }
-                    HStack {
-                        Text("Разработчик")
-                        Spacer()
-                        Text("aswer").foregroundColor(.gray)
-                    }
-                }
             }
             .navigationTitle("Настройки")
             .navigationBarTitleDisplayMode(.inline)
@@ -1784,12 +1817,11 @@ struct SettingsView: View {
     }
 }
 
+
 // MARK: - Извлечение доминирующих цветов из обложки
 extension UIImage {
     func extractGradientColors() -> [Color] {
         let side = 16
-        // Создаём контекст с явным форматом RGBA (premultipliedLast) —
-        // UIGraphicsBeginImageContextWithOptions даёт BGRA, что путает R и B каналы.
         var raw = [UInt8](repeating: 0, count: side * side * 4)
         guard let ctx = CGContext(
             data: &raw,
@@ -1797,19 +1829,17 @@ extension UIImage {
             bitsPerComponent: 8,
             bytesPerRow: side * 4,
             space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue  // → R G B A
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ), let cgImg = self.cgImage else {
-            return [.purple, .blue, .indigo, .cyan]
+            return [Color(red: 0.1, green: 0.1, blue: 0.2), Color(red: 0.2, green: 0.1, blue: 0.3)]
         }
         ctx.draw(cgImg, in: CGRect(x: 0, y: 0, width: side, height: side))
 
-        // Берём точки: 4 угла + центр + середины сторон (7 точек)
         let pts: [(Int,Int)] = [
             (1,1), (14,1), (7,7), (1,14), (14,14), (7,1), (7,14)
         ]
         return pts.map { (x, y) in
             let off = (y * side + x) * 4
-            // raw: [R, G, B, A] — теперь порядок гарантирован
             let r = CGFloat(raw[off])   / 255
             let g = CGFloat(raw[off+1]) / 255
             let b = CGFloat(raw[off+2]) / 255
@@ -1818,8 +1848,8 @@ extension UIImage {
                 .getHue(&h, saturation: &s, brightness: &br, alpha: &a)
             return Color(UIColor(
                 hue: h,
-                saturation: min(s * 1.35, 1.0),
-                brightness: max(min(br, 0.82), 0.18),
+                saturation: min(s * 1.5, 1.0),
+                brightness: max(min(br, 0.7), 0.25),
                 alpha: 1
             ))
         }
@@ -1845,8 +1875,6 @@ private struct AnimatedBlobCanvas: View {
     let colors: [Color]
     let time: Double
 
-    // (xSpeed, ySpeed, xPhase, yPhase, sizeMult)
-    // Независимые скорости по X и Y → фигуры Лиссажу вместо кругов
     private let configs: [(Double, Double, Double, Double, Double)] = [
         (0.41, 0.29, 0.00, 0.00, 1.15),
         (0.57, 0.38, 2.09, 1.57, 1.00),
@@ -1864,10 +1892,8 @@ private struct AnimatedBlobCanvas: View {
             let base = max(w, h) * 0.50
 
             ZStack {
-                // Тёмная подложка для контраста
-                Color.black.opacity(0.25)
+                Color.black.opacity(0.4)
 
-                // Базовый тон — первый цвет насыщенно
                 colors.first.map { $0.opacity(0.80) }
 
                 ForEach(0..<min(configs.count, max(colors.count, 1)), id: \.self) { i in
@@ -1885,46 +1911,96 @@ private struct AnimatedBlobCanvas: View {
                     )
                     .frame(width: r * 2, height: r * 2)
                     .position(x: xPos, y: yPos)
-                    .blendMode(.normal)
+                    .blendMode(.screen)
                 }
             }
-            .blur(radius: 28)   // ← было 55, теперь цвета чёткие
+            .blur(radius: 60)
         }
+        .clipped()
         .ignoresSafeArea()
     }
 }
 
+
 // MARK: - Полноэкранный плеер
-struct ThinSlider: View {
+
+struct NativePlaybackSlider: View {
     @Binding var value: Double
     var range: ClosedRange<Double> = 0...1
+    @State private var isDragging: Bool = false
     
     var body: some View {
         GeometryReader { geo in
-            let trackHeight: CGFloat = 4
+            let trackHeight: CGFloat = isDragging ? 8 : 4
             let pct = CGFloat((value - range.lowerBound) / max(range.upperBound - range.lowerBound, 0.001))
+            
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.primary.opacity(0.2))
+                    .fill(Color.white.opacity(0.2))
                     .frame(height: trackHeight)
                 
                 Capsule()
-                    .fill(Color.primary.opacity(0.8))
+                    .fill(Color.white.opacity(isDragging ? 0.9 : 0.7))
                     .frame(width: max(0, min(geo.size.width, geo.size.width * pct)), height: trackHeight)
             }
             .position(x: geo.size.width / 2, y: geo.size.height / 2)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDragging)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { v in
+                        isDragging = true
                         let percent = min(max(v.location.x / geo.size.width, 0), 1)
                         value = Double(percent) * (range.upperBound - range.lowerBound) + range.lowerBound
+                    }
+                    .onEnded { _ in
+                        isDragging = false
                     }
             )
         }
         .frame(height: 24)
     }
 }
+
+struct VolumeSliderView: View {
+    @Binding var value: Float
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "speaker.fill")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.6))
+            
+            GeometryReader { geo in
+                let pct = CGFloat(value)
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.2))
+                        .frame(height: 5)
+                    
+                    Capsule()
+                        .fill(Color.white)
+                        .frame(width: max(0, min(geo.size.width, geo.size.width * pct)), height: 5)
+                }
+                .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { v in
+                            let percent = min(max(v.location.x / geo.size.width, 0), 1)
+                            value = Float(percent)
+                        }
+                )
+            }
+            .frame(height: 20)
+            
+            Image(systemName: "speaker.wave.3.fill")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.6))
+        }
+    }
+}
+
 
 struct FullPlayerView: View {
     @Environment(\.dismiss) var dismiss
@@ -1987,36 +2063,43 @@ struct FullPlayerView: View {
             let isSmall = geo.size.height < 670
             
             ZStack {
-                Color(UIColor.systemBackground).ignoresSafeArea()
+                // Background Foundation
+                Color.black.ignoresSafeArea()
                 AppleMusicGradientBackground(colors: manager.gradientColors)
-                    .animation(.easeInOut(duration: 1.8), value: manager.currentTrackIndex)
-                BlurView(style: .systemThinMaterial).opacity(0.30).ignoresSafeArea()
+                    .animation(.easeInOut(duration: 1.5), value: manager.currentTrackIndex)
+                BlurView(style: .systemUltraThinMaterialDark).opacity(0.40).ignoresSafeArea()
                 
                 VStack(spacing: 0) {
+                    // Grabber
                     if !isImmersiveLyrics {
-                        Capsule().fill(Color.gray.opacity(0.5)).frame(width: 40, height: 5).padding(.top, 10)
+                        Capsule()
+                            .fill(Color.white.opacity(0.3))
+                            .frame(width: 36, height: 5)
+                            .padding(.top, 8)
                         Spacer(minLength: isSmall ? 10 : 30)
                     }
                     
                     let trackURL = manager.currentTrack?.url
                     let lyrics = trackURL.map { lyricsManager.lyrics(for: $0) } ?? []
 
+                    // Artwork & Lyrics Container
                     ZStack {
                         if showLyrics {
                             Group {
                                 if lyrics.isEmpty {
                                     VStack(spacing: 16) {
-                                        Image(systemName: "text.alignleft")
+                                        Image(systemName: "quote.bubble")
                                             .font(.system(size: 46))
-                                            .foregroundColor(.gray.opacity(0.35))
+                                            .foregroundColor(.white.opacity(0.35))
                                         Text("Текст отсутствует")
-                                            .foregroundColor(.gray)
+                                            .font(.headline)
+                                            .foregroundColor(.white.opacity(0.6))
                                         Button(action: { showLyricsEditor = true }) {
                                             Label("Добавить текст", systemImage: "plus")
                                                 .font(.subheadline.weight(.medium))
-                                                .foregroundColor(.red)
-                                                .padding(.horizontal, 18).padding(.vertical, 9)
-                                                .background(Color.red.opacity(0.1))
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, 18).padding(.vertical, 10)
+                                                .background(Color.white.opacity(0.15))
                                                 .cornerRadius(10)
                                         }
                                     }
@@ -2033,28 +2116,47 @@ struct FullPlayerView: View {
                             }
                             .transition(.opacity)
                         } else {
-                            Group {
-                                RoundedRectangle(cornerRadius: 20).fill(Color.primary.opacity(0.1))
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.1))
                                 if let image = manager.currentArtwork {
-                                    Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
                                 } else {
                                     Image(systemName: "music.note")
-                                        .font(.system(size: isSmall ? 40 : 80))
-                                        .foregroundColor(.red)
+                                        .font(.system(size: isSmall ? 60 : 100))
+                                        .foregroundColor(.white.opacity(0.5))
                                 }
                             }
-                            .scaleEffect(manager.isPlaying ? 1.0 : 0.9)
-                            .animation(.spring(response: 0.5, dampingFraction: 0.7), value: manager.isPlaying)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .shadow(
+                                color: manager.gradientColors.first?.opacity(0.6) ?? Color.black.opacity(0.4),
+                                radius: manager.isPlaying ? 30 : 15,
+                                x: 0,
+                                y: manager.isPlaying ? 20 : 8
+                            )
+                            .scaleEffect(manager.isPlaying ? 1.0 : 0.85)
+                            .animation(.spring(response: 0.6, dampingFraction: 0.65), value: manager.isPlaying)
                             .transition(.opacity)
                         }
                     }
                     .frame(
-                        maxWidth: isImmersiveLyrics ? .infinity : (isSmall ? geo.size.width * 0.75 : geo.size.width * 0.88),
-                        maxHeight: isImmersiveLyrics ? .infinity : (isSmall ? geo.size.width * 0.75 : geo.size.width * 0.88)
+                        maxWidth: isImmersiveLyrics ? .infinity : (isSmall ? geo.size.width * 0.7 : geo.size.width * 0.85),
+                        maxHeight: isImmersiveLyrics ? .infinity : (isSmall ? geo.size.width * 0.7 : geo.size.width * 0.85)
                     )
                     .animation(.spring(response: 0.55, dampingFraction: 0.82), value: isImmersiveLyrics)
-                    .cornerRadius(isImmersiveLyrics ? 0 : 20)
-                    .shadow(color: isImmersiveLyrics ? .clear : Color(UIColor.label).opacity(0.2), radius: isImmersiveLyrics ? 0 : 20)
+                    .cornerRadius(isImmersiveLyrics ? 0 : 12)
+                    .overlay(alignment: .topTrailing) {
+                        if isImmersiveLyrics {
+                            Button(action: handleTap) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(.white.opacity(0.6))
+                                    .padding(24)
+                                    .padding(.top, isSmall ? 0 : 10)
+                            }
+                        }
+                    }
                     .gesture(
                         DragGesture().onEnded { value in
                             guard !showLyrics else { return }
@@ -2062,70 +2164,52 @@ struct FullPlayerView: View {
                             else if value.translation.width > 50 { withAnimation { manager.prevTrack() } }
                         }
                     )
-                    .overlay(alignment: .topTrailing) {
-                        if !isImmersiveLyrics {
-                            HStack(spacing: 4) {
-                                if showLyrics {
-                                    Button(action: { showLyricsEditor = true }) {
-                                        Image(systemName: "square.and.pencil")
-                                            .font(.system(size: 12, weight: .semibold))
-                                            .foregroundColor(.primary.opacity(0.85))
-                                            .padding(7)
-                                            .background(.ultraThinMaterial)
-                                            .cornerRadius(8)
-                                    }
-                                }
-                                Button(action: { withAnimation(.easeInOut(duration: 0.35)) { showLyrics.toggle() } }) {
-                                    Image(systemName: showLyrics ? "music.note" : "text.alignleft")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(showLyrics ? .red : .primary.opacity(0.85))
-                                        .padding(7)
-                                        .background(.ultraThinMaterial)
-                                        .cornerRadius(8)
-                                }
-                            }
-                            .padding(10)
-                        } else {
-                            Button(action: handleTap) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 30))
-                                    .foregroundColor(.white.opacity(0.65))
-                                    .padding(20)
-                            }
-                            .transition(.opacity)
-                        }
-                    }
-
+                    
                     if isImmersiveLyrics {
                         ImmersiveBottomBar(manager: manager)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     } else {
                         VStack(spacing: 0) {
-                            Spacer(minLength: isSmall ? 8 : 15)
+                            Spacer(minLength: isSmall ? 15 : 35)
                             
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
+                            // Info & More Button
+                            HStack(alignment: .center) {
+                                VStack(alignment: .leading, spacing: 2) {
                                     Text(manager.currentTitle)
-                                        .font(isSmall ? .headline : .title2).bold()
+                                        .font(.system(size: isSmall ? 20 : 24, weight: .bold, design: .rounded))
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.8)
-                                        .foregroundColor(.primary)
+                                        .foregroundColor(.white)
                                     Text(manager.currentArtist)
-                                        .font(isSmall ? .subheadline : .title3)
-                                        .foregroundColor(.primary.opacity(0.7))
+                                        .font(.system(size: isSmall ? 16 : 18, weight: .medium, design: .rounded))
+                                        .foregroundColor(.white.opacity(0.6))
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.8)
                                 }
                                 Spacer()
+                                
+                                Menu {
+                                    Button(action: { showFileInfo = true }) { Label("Свойства файла", systemImage: "info.circle") }
+                                    Button(action: {
+                                        if manager.currentTrack != nil { showShareSheet = true }
+                                    }) { Label("Поделиться", systemImage: "square.and.arrow.up") }
+                                    if showLyrics {
+                                        Button(action: { showLyricsEditor = true }) { Label("Редактировать текст", systemImage: "pencil") }
+                                    }
+                                } label: {
+                                    Image(systemName: "ellipsis.circle.fill")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.white.opacity(0.7))
+                                        .padding(.leading, 10)
+                                }
                             }
-                            .padding(.horizontal, 30)
-                            .contentShape(Rectangle())
-                            .onTapGesture { showFileInfo = true }
+                            .padding(.horizontal, 35)
 
-                            Spacer(minLength: isSmall ? 10 : 20)
+                            Spacer(minLength: isSmall ? 15 : 25)
                             
-                            VStack(spacing: 4) {
-                                ThinSlider(
+                            // Native Scrubber
+                            VStack(spacing: 6) {
+                                NativePlaybackSlider(
                                     value: Binding(
                                         get: { playbackTime.currentTime },
                                         set: { playbackTime.currentTime = $0; manager.seek(to: $0) }
@@ -2137,70 +2221,66 @@ struct FullPlayerView: View {
                                     Text(formatTime(playbackTime.currentTime))
                                     Spacer()
                                     Text(formatTime(manager.trackDuration))
-                                }.font(.caption2.bold()).foregroundColor(.gray)
-                            }.padding(.horizontal, 30)
+                                }
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.5))
+                            }.padding(.horizontal, 35)
 
-                            Spacer(minLength: isSmall ? 15 : 25)
+                            Spacer(minLength: isSmall ? 15 : 30)
                             
+                            // Playback Controls
                             HStack(spacing: isSmall ? 40 : 60) {
-                                Button(action: manager.prevTrack) { Image(systemName: "backward.fill").font(.title) }
+                                Button(action: manager.prevTrack) {
+                                    Image(systemName: "backward.fill")
+                                        .font(.system(size: isSmall ? 28 : 36))
+                                }
                                 Button(action: manager.playPause) {
                                     Image(systemName: manager.isPlaying ? "pause.fill" : "play.fill")
-                                        .font(.system(size: isSmall ? 40 : 50))
+                                        .font(.system(size: isSmall ? 44 : 54))
                                 }
-                                Button(action: manager.nextTrack) { Image(systemName: "forward.fill").font(.title) }
-                            }.foregroundColor(.primary)
+                                Button(action: manager.nextTrack) {
+                                    Image(systemName: "forward.fill")
+                                        .font(.system(size: isSmall ? 28 : 36))
+                                }
+                            }.foregroundColor(.white)
 
-                            Spacer(minLength: isSmall ? 15 : 25)
+                            Spacer(minLength: isSmall ? 20 : 40)
                             
-                            HStack(spacing: 12) {
-                                Image(systemName: "speaker.fill").font(.caption).foregroundColor(.gray)
-                                ThinSlider(
-                                    value: Binding(
-                                        get: { Double(manager.volume) },
-                                        set: { manager.volume = Float($0) }
-                                    ),
-                                    range: 0...1
-                                )
-                                Image(systemName: "speaker.wave.3.fill").font(.caption).foregroundColor(.gray)
-                            }.padding(.horizontal, 35)
+                            // Volume Bar
+                            VolumeSliderView(value: Binding(
+                                get: { manager.volume },
+                                set: { manager.volume = $0 }
+                            )).padding(.horizontal, 40)
                             
-                            Spacer(minLength: isSmall ? 10 : 20)
+                            Spacer(minLength: isSmall ? 15 : 30)
                             
-                            HStack {
-                                Button(action: manager.toggleShuffle) {
-                                    Image(systemName: "shuffle").font(.system(size: 18, weight: .medium))
-                                        .foregroundColor(manager.shuffleOn ? .red : .primary.opacity(0.6))
-                                        .padding(10).background(manager.shuffleOn ? Color.red.opacity(0.1) : Color.clear).cornerRadius(10)
+                            // Bottom Actions Bar
+                            HStack(spacing: 0) {
+                                Button(action: { withAnimation(.easeInOut(duration: 0.35)) { showLyrics.toggle() } }) {
+                                    Image(systemName: "quote.bubble")
+                                        .font(.system(size: 20, weight: .semibold))
+                                        .foregroundColor(showLyrics ? .white : .white.opacity(0.6))
+                                        .frame(maxWidth: .infinity)
                                 }
-                                Spacer(minLength: 10)
                                 
-                                Button(action: {
-                                    if manager.currentTrack != nil {
-                                        showShareSheet = true
-                                    }
-                                }) {
-                                    Image(systemName: "square.and.arrow.up").font(.system(size: 18, weight: .medium))
-                                        .foregroundColor(.primary.opacity(0.8))
-                                        .padding(10)
-                                        .background(Color.clear)
-                                        .cornerRadius(10)
-                                }
-                                .disabled(manager.currentTrack == nil)
-                                
-                                Spacer(minLength: 10)
-                                AirPlayView().frame(width: 35, height: 35)
-                                Spacer(minLength: 10)
+                                AirPlayView().frame(maxWidth: .infinity, maxHeight: 35)
                                 
                                 Button(action: manager.toggleRepeat) {
-                                    Image(systemName: manager.repeatMode.iconName).font(.system(size: 18, weight: .medium))
-                                        .foregroundColor(manager.repeatMode == .none ? .primary.opacity(0.6) : .red)
-                                        .padding(10).background(manager.repeatMode == .none ? Color.clear : Color.red.opacity(0.1)).cornerRadius(10)
+                                    Image(systemName: manager.repeatMode.iconName)
+                                        .font(.system(size: 20, weight: .semibold))
+                                        .foregroundColor(manager.repeatMode == .none ? .white.opacity(0.6) : .white)
+                                        .frame(maxWidth: .infinity)
                                 }
-                            }.padding(.horizontal, 30)
-                            
-                            Spacer(minLength: 5)
-                            Text("by aswer.").font(.caption2.monospaced()).opacity(0.2).padding(.bottom, 5)
+                                
+                                Button(action: manager.toggleShuffle) {
+                                    Image(systemName: "shuffle")
+                                        .font(.system(size: 20, weight: .semibold))
+                                        .foregroundColor(manager.shuffleOn ? .white : .white.opacity(0.6))
+                                        .frame(maxWidth: .infinity)
+                                }
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.bottom, isSmall ? 20 : 40)
                         }
                         .transition(.opacity)
                     }
@@ -2209,7 +2289,8 @@ struct FullPlayerView: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
-        .gesture(DragGesture().onEnded { if $0.translation.height > 80 { dismiss() } })
+        .preferredColorScheme(.dark)
+        .gesture(DragGesture().onEnded { if $0.translation.height > 100 { dismiss() } })
         .sheet(isPresented: $showFileInfo) {
             if let currentUrl = manager.audioPlayer?.url {
                 FileInfoView(url: currentUrl, duration: manager.trackDuration)
@@ -2248,7 +2329,6 @@ struct FullPlayerView: View {
             manager.syncVolumeWithCurrentMode()
             resetIdleTimer()
         }
-        .preferredColorScheme(.dark)
     }
     
     func formatTime(_ t: TimeInterval) -> String {
@@ -2258,6 +2338,7 @@ struct FullPlayerView: View {
         return String(format: "%02d:%02d", m, s)
     }
 }
+
 
 // MARK: - Экран информации о файле
 struct FileInfoView: View {
@@ -2348,8 +2429,8 @@ struct BlurView: UIViewRepresentable {
 struct AirPlayView: UIViewRepresentable {
     func makeUIView(context: Context) -> AVRoutePickerView {
         let p = AVRoutePickerView()
-        p.activeTintColor = .systemRed
-        p.tintColor = UIColor.label.withAlphaComponent(0.6)
+        p.activeTintColor = .white
+        p.tintColor = .white
         p.backgroundColor = .clear
         return p
     }
