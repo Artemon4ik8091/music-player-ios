@@ -766,7 +766,6 @@ class MusicManager: NSObject, ObservableObject {
     }
 }
 
-
 // MARK: - Вертикальный ползунок эквалайзера в стиле аудио-консоли
 struct VerticalSlider: View {
     @Binding var value: Double
@@ -924,7 +923,6 @@ struct EqualizerSettingsView: View {
         MusicManager.shared.applyEQChanges()
     }
 }
-
 
 // MARK: - Синхронизированный просмотр текста
 struct LyricsView: View {
@@ -1322,7 +1320,6 @@ struct LyricsEditorView: View {
     }
 }
 
-
 struct TrackRow: View {
     let track: Track
     let isCurrent: Bool
@@ -1476,7 +1473,6 @@ struct ImmersiveBottomBar: View {
         .background(BlurView(style: .systemMaterialDark).edgesIgnoringSafeArea(.bottom))
     }
 }
-
 
 // MARK: - Главный экран
 struct ContentView: View {
@@ -1704,7 +1700,6 @@ extension URL: Identifiable {
     public var id: String { self.absoluteString }
 }
 
-
 // MARK: - Окно настроек
 struct SettingsView: View {
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
@@ -1717,6 +1712,8 @@ struct SettingsView: View {
     @AppStorage("autoImmersiveLyricsEnabled") private var autoImmersiveLyricsEnabled: Bool = true
     @AppStorage("autoImmersiveLyricsTimeout") private var autoImmersiveLyricsTimeout: Double = 3.0
     @AppStorage("lyricsFontSize") private var lyricsFontSize: Double = 34.0
+    
+    @AppStorage("useSimpleBackground") private var useSimpleBackground: Bool = false
     
     @Environment(\.dismiss) var dismiss
     @State private var showingClearAlert = false
@@ -1732,6 +1729,15 @@ struct SettingsView: View {
                         }
                     }
                     .pickerStyle(SegmentedPickerStyle())
+                    
+                    Toggle(isOn: $useSimpleBackground) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Упрощенный фон плеера")
+                            Text("Отключает тяжелую анимацию и показывает статичную размытую обложку")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+                    }
                 }
                 
                 Section(header: Text("Звуковые эффекты")) {
@@ -1816,7 +1822,6 @@ struct SettingsView: View {
         .preferredColorScheme(appTheme.colorScheme)
     }
 }
-
 
 // MARK: - Извлечение доминирующих цветов из обложки
 extension UIImage {
@@ -2001,12 +2006,12 @@ struct VolumeSliderView: View {
     }
 }
 
-
 struct FullPlayerView: View {
     @Environment(\.dismiss) var dismiss
     
     @AppStorage("autoImmersiveLyricsEnabled") private var autoImmersiveLyricsEnabled: Bool = true
     @AppStorage("autoImmersiveLyricsTimeout") private var autoImmersiveLyricsTimeout: Double = 3.0
+    @AppStorage("useSimpleBackground") private var useSimpleBackground: Bool = false
     
     @ObservedObject var manager = MusicManager.shared
     @ObservedObject var lyricsManager = LyricsManager.shared
@@ -2065,8 +2070,35 @@ struct FullPlayerView: View {
             ZStack {
                 // Background Foundation
                 Color.black.ignoresSafeArea()
-                AppleMusicGradientBackground(colors: manager.gradientColors)
-                    .animation(.easeInOut(duration: 1.5), value: manager.currentTrackIndex)
+                
+                // Background Switcher
+                if useSimpleBackground {
+                    GeometryReader { bgGeo in
+                        if let image = manager.currentArtwork {
+                            Image(uiImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: bgGeo.size.width, height: bgGeo.size.height)
+                                .blur(radius: 80)
+                                .clipped()
+                                .opacity(0.6)
+                                .animation(.easeInOut(duration: 1.0), value: manager.currentArtwork)
+                        } else {
+                            LinearGradient(
+                                colors: manager.gradientColors,
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            .opacity(0.6)
+                            .animation(.easeInOut(duration: 1.0), value: manager.gradientColors)
+                        }
+                    }
+                    .ignoresSafeArea()
+                } else {
+                    AppleMusicGradientBackground(colors: manager.gradientColors)
+                        .animation(.easeInOut(duration: 1.5), value: manager.currentTrackIndex)
+                }
+                
                 BlurView(style: .systemUltraThinMaterialDark).opacity(0.40).ignoresSafeArea()
                 
                 VStack(spacing: 0) {
