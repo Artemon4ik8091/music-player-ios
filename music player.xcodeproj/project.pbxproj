@@ -7,6 +7,17 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		09192EFC2FF44C2700A9F43F /* music_playerWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09192EFB2FF44C2700A9F43F /* music_playerWatchApp.swift */; };
+		09192EFE2FF44C2700A9F43F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09192EFD2FF44C2700A9F43F /* ContentView.swift */; };
+		09192F002FF44C2900A9F43F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 09192EFF2FF44C2900A9F43F /* Assets.xcassets */; };
+		09192F032FF44C2900A9F43F /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 09192F022FF44C2900A9F43F /* Preview Assets.xcassets */; };
+		09192F0D2FF44C2900A9F43F /* music_playerWatch_Watch_AppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09192F0C2FF44C2900A9F43F /* music_playerWatch_Watch_AppTests.swift */; };
+		09192F172FF44C2900A9F43F /* music_playerWatch_Watch_AppUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09192F162FF44C2900A9F43F /* music_playerWatch_Watch_AppUITests.swift */; };
+		09192F192FF44C2900A9F43F /* music_playerWatch_Watch_AppUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09192F182FF44C2900A9F43F /* music_playerWatch_Watch_AppUITestsLaunchTests.swift */; };
+		09192F1C2FF44C2900A9F43F /* music playerWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 09192EF92FF44C2700A9F43F /* music playerWatch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		09192F292FF44E6500A9F43F /* WatchConnectivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09192F272FF44E6500A9F43F /* WatchConnectivityManager.swift */; };
+		09192F2A2FF44E6500A9F43F /* NowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09192F282FF44E6500A9F43F /* NowPlayingView.swift */; };
+		09192F2C2FF44EB100A9F43F /* PhoneConnectivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09192F2B2FF44EB100A9F43F /* PhoneConnectivityManager.swift */; };
 		09E3FD242FEB19100073862C /* music_playerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09E3FD232FEB19100073862C /* music_playerApp.swift */; };
 		09E3FD262FEB19100073862C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09E3FD252FEB19100073862C /* ContentView.swift */; };
 		09E3FD282FEB19120073862C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 09E3FD272FEB19120073862C /* Assets.xcassets */; };
@@ -17,6 +28,27 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		09192F092FF44C2900A9F43F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 09E3FD182FEB19100073862C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 09192EF82FF44C2700A9F43F;
+			remoteInfo = "music playerWatch Watch App";
+		};
+		09192F132FF44C2900A9F43F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 09E3FD182FEB19100073862C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 09192EF82FF44C2700A9F43F;
+			remoteInfo = "music playerWatch Watch App";
+		};
+		09192F1A2FF44C2900A9F43F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 09E3FD182FEB19100073862C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 09192EF82FF44C2700A9F43F;
+			remoteInfo = "music playerWatch Watch App";
+		};
 		09E3FD312FEB19120073862C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 09E3FD182FEB19100073862C /* Project object */;
@@ -33,8 +65,35 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		09192F1D2FF44C2900A9F43F /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				09192F1C2FF44C2900A9F43F /* music playerWatch Watch App.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		090E8B7E2FEBDC5F00B552A1 /* music-player-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "music-player-Info.plist"; sourceTree = SOURCE_ROOT; };
+		09192EF92FF44C2700A9F43F /* music playerWatch Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "music playerWatch Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		09192EFB2FF44C2700A9F43F /* music_playerWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = music_playerWatchApp.swift; sourceTree = "<group>"; };
+		09192EFD2FF44C2700A9F43F /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		09192EFF2FF44C2900A9F43F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		09192F022FF44C2900A9F43F /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		09192F082FF44C2900A9F43F /* music playerWatch Watch AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "music playerWatch Watch AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		09192F0C2FF44C2900A9F43F /* music_playerWatch_Watch_AppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = music_playerWatch_Watch_AppTests.swift; sourceTree = "<group>"; };
+		09192F122FF44C2900A9F43F /* music playerWatch Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "music playerWatch Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		09192F162FF44C2900A9F43F /* music_playerWatch_Watch_AppUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = music_playerWatch_Watch_AppUITests.swift; sourceTree = "<group>"; };
+		09192F182FF44C2900A9F43F /* music_playerWatch_Watch_AppUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = music_playerWatch_Watch_AppUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		09192F272FF44E6500A9F43F /* WatchConnectivityManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WatchConnectivityManager.swift; sourceTree = "<group>"; };
+		09192F282FF44E6500A9F43F /* NowPlayingView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = NowPlayingView.swift; sourceTree = "<group>"; };
+		09192F2B2FF44EB100A9F43F /* PhoneConnectivityManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PhoneConnectivityManager.swift; sourceTree = "<group>"; };
 		09D7E77E2FEFD0700070E7D6 /* music player.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "music player.entitlements"; sourceTree = "<group>"; };
 		09E3FD202FEB19100073862C /* music player.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "music player.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		09E3FD232FEB19100073862C /* music_playerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = music_playerApp.swift; sourceTree = "<group>"; };
@@ -49,6 +108,27 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		09192EF62FF44C2700A9F43F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		09192F052FF44C2900A9F43F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		09192F0F2FF44C2900A9F43F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		09E3FD1D2FEB19100073862C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -73,12 +153,53 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		09192EFA2FF44C2700A9F43F /* music playerWatch Watch App */ = {
+			isa = PBXGroup;
+			children = (
+				09192EFB2FF44C2700A9F43F /* music_playerWatchApp.swift */,
+				09192EFD2FF44C2700A9F43F /* ContentView.swift */,
+				09192F282FF44E6500A9F43F /* NowPlayingView.swift */,
+				09192F272FF44E6500A9F43F /* WatchConnectivityManager.swift */,
+				09192EFF2FF44C2900A9F43F /* Assets.xcassets */,
+				09192F012FF44C2900A9F43F /* Preview Content */,
+			);
+			path = "music playerWatch Watch App";
+			sourceTree = "<group>";
+		};
+		09192F012FF44C2900A9F43F /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				09192F022FF44C2900A9F43F /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		09192F0B2FF44C2900A9F43F /* music playerWatch Watch AppTests */ = {
+			isa = PBXGroup;
+			children = (
+				09192F0C2FF44C2900A9F43F /* music_playerWatch_Watch_AppTests.swift */,
+			);
+			path = "music playerWatch Watch AppTests";
+			sourceTree = "<group>";
+		};
+		09192F152FF44C2900A9F43F /* music playerWatch Watch AppUITests */ = {
+			isa = PBXGroup;
+			children = (
+				09192F162FF44C2900A9F43F /* music_playerWatch_Watch_AppUITests.swift */,
+				09192F182FF44C2900A9F43F /* music_playerWatch_Watch_AppUITestsLaunchTests.swift */,
+			);
+			path = "music playerWatch Watch AppUITests";
+			sourceTree = "<group>";
+		};
 		09E3FD172FEB19100073862C = {
 			isa = PBXGroup;
 			children = (
 				09E3FD222FEB19100073862C /* music player */,
 				09E3FD332FEB19120073862C /* music playerTests */,
 				09E3FD3D2FEB19120073862C /* music playerUITests */,
+				09192EFA2FF44C2700A9F43F /* music playerWatch Watch App */,
+				09192F0B2FF44C2900A9F43F /* music playerWatch Watch AppTests */,
+				09192F152FF44C2900A9F43F /* music playerWatch Watch AppUITests */,
 				09E3FD212FEB19100073862C /* Products */,
 			);
 			sourceTree = "<group>";
@@ -89,6 +210,9 @@
 				09E3FD202FEB19100073862C /* music player.app */,
 				09E3FD302FEB19120073862C /* music playerTests.xctest */,
 				09E3FD3A2FEB19120073862C /* music playerUITests.xctest */,
+				09192EF92FF44C2700A9F43F /* music playerWatch Watch App.app */,
+				09192F082FF44C2900A9F43F /* music playerWatch Watch AppTests.xctest */,
+				09192F122FF44C2900A9F43F /* music playerWatch Watch AppUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -100,6 +224,7 @@
 				090E8B7E2FEBDC5F00B552A1 /* music-player-Info.plist */,
 				09E3FD232FEB19100073862C /* music_playerApp.swift */,
 				09E3FD252FEB19100073862C /* ContentView.swift */,
+				09192F2B2FF44EB100A9F43F /* PhoneConnectivityManager.swift */,
 				09E3FD272FEB19120073862C /* Assets.xcassets */,
 				09E3FD292FEB19120073862C /* Preview Content */,
 			);
@@ -134,6 +259,59 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		09192EF82FF44C2700A9F43F /* music playerWatch Watch App */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 09192F242FF44C2900A9F43F /* Build configuration list for PBXNativeTarget "music playerWatch Watch App" */;
+			buildPhases = (
+				09192EF52FF44C2700A9F43F /* Sources */,
+				09192EF62FF44C2700A9F43F /* Frameworks */,
+				09192EF72FF44C2700A9F43F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "music playerWatch Watch App";
+			productName = "music playerWatch Watch App";
+			productReference = 09192EF92FF44C2700A9F43F /* music playerWatch Watch App.app */;
+			productType = "com.apple.product-type.application";
+		};
+		09192F072FF44C2900A9F43F /* music playerWatch Watch AppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 09192F252FF44C2900A9F43F /* Build configuration list for PBXNativeTarget "music playerWatch Watch AppTests" */;
+			buildPhases = (
+				09192F042FF44C2900A9F43F /* Sources */,
+				09192F052FF44C2900A9F43F /* Frameworks */,
+				09192F062FF44C2900A9F43F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				09192F0A2FF44C2900A9F43F /* PBXTargetDependency */,
+			);
+			name = "music playerWatch Watch AppTests";
+			productName = "music playerWatch Watch AppTests";
+			productReference = 09192F082FF44C2900A9F43F /* music playerWatch Watch AppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		09192F112FF44C2900A9F43F /* music playerWatch Watch AppUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 09192F262FF44C2900A9F43F /* Build configuration list for PBXNativeTarget "music playerWatch Watch AppUITests" */;
+			buildPhases = (
+				09192F0E2FF44C2900A9F43F /* Sources */,
+				09192F0F2FF44C2900A9F43F /* Frameworks */,
+				09192F102FF44C2900A9F43F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				09192F142FF44C2900A9F43F /* PBXTargetDependency */,
+			);
+			name = "music playerWatch Watch AppUITests";
+			productName = "music playerWatch Watch AppUITests";
+			productReference = 09192F122FF44C2900A9F43F /* music playerWatch Watch AppUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		09E3FD1F2FEB19100073862C /* music player */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 09E3FD442FEB19120073862C /* Build configuration list for PBXNativeTarget "music player" */;
@@ -141,10 +319,12 @@
 				09E3FD1C2FEB19100073862C /* Sources */,
 				09E3FD1D2FEB19100073862C /* Frameworks */,
 				09E3FD1E2FEB19100073862C /* Resources */,
+				09192F1D2FF44C2900A9F43F /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				09192F1B2FF44C2900A9F43F /* PBXTargetDependency */,
 			);
 			name = "music player";
 			productName = "music player";
@@ -197,6 +377,17 @@
 				LastSwiftUpdateCheck = 1540;
 				LastUpgradeCheck = 1540;
 				TargetAttributes = {
+					09192EF82FF44C2700A9F43F = {
+						CreatedOnToolsVersion = 15.4;
+					};
+					09192F072FF44C2900A9F43F = {
+						CreatedOnToolsVersion = 15.4;
+						TestTargetID = 09192EF82FF44C2700A9F43F;
+					};
+					09192F112FF44C2900A9F43F = {
+						CreatedOnToolsVersion = 15.4;
+						TestTargetID = 09192EF82FF44C2700A9F43F;
+					};
 					09E3FD1F2FEB19100073862C = {
 						CreatedOnToolsVersion = 15.4;
 					};
@@ -226,11 +417,37 @@
 				09E3FD1F2FEB19100073862C /* music player */,
 				09E3FD2F2FEB19120073862C /* music playerTests */,
 				09E3FD392FEB19120073862C /* music playerUITests */,
+				09192EF82FF44C2700A9F43F /* music playerWatch Watch App */,
+				09192F072FF44C2900A9F43F /* music playerWatch Watch AppTests */,
+				09192F112FF44C2900A9F43F /* music playerWatch Watch AppUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		09192EF72FF44C2700A9F43F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				09192F032FF44C2900A9F43F /* Preview Assets.xcassets in Resources */,
+				09192F002FF44C2900A9F43F /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		09192F062FF44C2900A9F43F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		09192F102FF44C2900A9F43F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		09E3FD1E2FEB19100073862C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -257,10 +474,39 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		09192EF52FF44C2700A9F43F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				09192EFE2FF44C2700A9F43F /* ContentView.swift in Sources */,
+				09192F292FF44E6500A9F43F /* WatchConnectivityManager.swift in Sources */,
+				09192F2A2FF44E6500A9F43F /* NowPlayingView.swift in Sources */,
+				09192EFC2FF44C2700A9F43F /* music_playerWatchApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		09192F042FF44C2900A9F43F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				09192F0D2FF44C2900A9F43F /* music_playerWatch_Watch_AppTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		09192F0E2FF44C2900A9F43F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				09192F172FF44C2900A9F43F /* music_playerWatch_Watch_AppUITests.swift in Sources */,
+				09192F192FF44C2900A9F43F /* music_playerWatch_Watch_AppUITestsLaunchTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		09E3FD1C2FEB19100073862C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				09192F2C2FF44EB100A9F43F /* PhoneConnectivityManager.swift in Sources */,
 				09E3FD262FEB19100073862C /* ContentView.swift in Sources */,
 				09E3FD242FEB19100073862C /* music_playerApp.swift in Sources */,
 			);
@@ -286,6 +532,21 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		09192F0A2FF44C2900A9F43F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 09192EF82FF44C2700A9F43F /* music playerWatch Watch App */;
+			targetProxy = 09192F092FF44C2900A9F43F /* PBXContainerItemProxy */;
+		};
+		09192F142FF44C2900A9F43F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 09192EF82FF44C2700A9F43F /* music playerWatch Watch App */;
+			targetProxy = 09192F132FF44C2900A9F43F /* PBXContainerItemProxy */;
+		};
+		09192F1B2FF44C2900A9F43F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 09192EF82FF44C2700A9F43F /* music playerWatch Watch App */;
+			targetProxy = 09192F1A2FF44C2900A9F43F /* PBXContainerItemProxy */;
+		};
 		09E3FD322FEB19120073862C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 09E3FD1F2FEB19100073862C /* music player */;
@@ -299,6 +560,148 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		09192F1E2FF44C2900A9F43F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_ASSET_PATHS = "\"music playerWatch Watch App/Preview Content\"";
+				DEVELOPMENT_TEAM = K7BNMVXY4T;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "music playerWatch";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "aswer.music-player";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 4.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "aswer.music-player.watchkitapp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 8.0;
+			};
+			name = Debug;
+		};
+		09192F1F2FF44C2900A9F43F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_ASSET_PATHS = "\"music playerWatch Watch App/Preview Content\"";
+				DEVELOPMENT_TEAM = K7BNMVXY4T;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "music playerWatch";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "aswer.music-player";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 4.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "aswer.music-player.watchkitapp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 8.0;
+			};
+			name = Release;
+		};
+		09192F202FF44C2900A9F43F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = K7BNMVXY4T;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "aswer.music-playerWatch-Watch-AppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/music playerWatch Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/music playerWatch Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 10.5;
+			};
+			name = Debug;
+		};
+		09192F212FF44C2900A9F43F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = K7BNMVXY4T;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "aswer.music-playerWatch-Watch-AppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/music playerWatch Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/music playerWatch Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 10.5;
+			};
+			name = Release;
+		};
+		09192F222FF44C2900A9F43F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = K7BNMVXY4T;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "aswer.music-playerWatch-Watch-AppUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_TARGET_NAME = "music playerWatch Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 10.5;
+			};
+			name = Debug;
+		};
+		09192F232FF44C2900A9F43F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = K7BNMVXY4T;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "aswer.music-playerWatch-Watch-AppUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_TARGET_NAME = "music playerWatch Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 10.5;
+			};
+			name = Release;
+		};
 		09E3FD422FEB19120073862C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -421,11 +824,12 @@
 		09E3FD452FEB19120073862C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "music player/music player.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_ASSET_PATHS = "\"music player/Preview Content\"";
 				DEVELOPMENT_TEAM = K7BNMVXY4T;
 				ENABLE_PREVIEWS = YES;
@@ -441,7 +845,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "aswer.music-player";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -455,11 +859,12 @@
 		09E3FD462FEB19120073862C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "music player/music player.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_ASSET_PATHS = "\"music player/Preview Content\"";
 				DEVELOPMENT_TEAM = K7BNMVXY4T;
 				ENABLE_PREVIEWS = YES;
@@ -475,7 +880,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "aswer.music-player";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -565,6 +970,33 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		09192F242FF44C2900A9F43F /* Build configuration list for PBXNativeTarget "music playerWatch Watch App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				09192F1E2FF44C2900A9F43F /* Debug */,
+				09192F1F2FF44C2900A9F43F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		09192F252FF44C2900A9F43F /* Build configuration list for PBXNativeTarget "music playerWatch Watch AppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				09192F202FF44C2900A9F43F /* Debug */,
+				09192F212FF44C2900A9F43F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		09192F262FF44C2900A9F43F /* Build configuration list for PBXNativeTarget "music playerWatch Watch AppUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				09192F222FF44C2900A9F43F /* Debug */,
+				09192F232FF44C2900A9F43F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		09E3FD1B2FEB19100073862C /* Build configuration list for PBXProject "music player" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

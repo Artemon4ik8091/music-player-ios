@@ -4,6 +4,7 @@ import MediaPlayer
 import Combine
 import UniformTypeIdentifiers
 import AVKit
+import PhotosUI
 
 // MARK: - Модель трека
 struct Track: Identifiable, Hashable {
@@ -417,6 +418,104 @@ class PlaybackTime: ObservableObject {
     @Published var currentTime: TimeInterval = 0
 }
 
+// MARK: - Модель и менеджер пользовательских метаданных трека
+struct TrackMetadataOverride: Codable {
+    var title: String
+    var artist: String
+}
+
+class TrackMetadataManager: ObservableObject {
+    static let shared = TrackMetadataManager()
+    private let storageKey = "trackMetadataOverrides_v1"
+    @Published private var store: [String: TrackMetadataOverride] = [:]
+
+    init() { load() }
+
+    func override(for url: URL) -> TrackMetadataOverride? {
+        store[url.lastPathComponent]
+    }
+
+    func hasOverride(for url: URL) -> Bool {
+        store[url.lastPathComponent] != nil
+    }
+
+    func setMetadata(title: String, artist: String, for url: URL) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedArtist = artist.trimmingCharacters(in: .whitespacesAndNewlines)
+        store[url.lastPathComponent] = TrackMetadataOverride(
+            title: trimmedTitle.isEmpty ? url.lastPathComponent : trimmedTitle,
+            artist: trimmedArtist.isEmpty ? "Локальный файл" : trimmedArtist
+        )
+        save()
+        objectWillChange.send()
+    }
+
+    func resetMetadata(for url: URL) {
+        store.removeValue(forKey: url.lastPathComponent)
+        save()
+        objectWillChange.send()
+    }
+
+    private func save() {
+        if let data = try? JSONEncoder().encode(store) {
+            UserDefaults.standard.set(data, forKey: storageKey)
+        }
+    }
+
+    private func load() {
+        guard let d = UserDefaults.standard.data(forKey: storageKey),
+              let dict = try? JSONDecoder().decode([String: TrackMetadataOverride].self, from: d)
+        else { return }
+        store = dict
+    }
+}
+
+// MARK: - Менеджер пользовательских обложек треков
+class ArtworkManager: ObservableObject {
+    static let shared = ArtworkManager()
+    private var cache: [String: UIImage] = [:]
+
+    private var artworkDirectory: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let dir = docs.appendingPathComponent("CustomArtwork", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        return dir
+    }
+
+    private func fileURL(for trackURL: URL) -> URL {
+        artworkDirectory.appendingPathComponent(trackURL.lastPathComponent + ".jpg")
+    }
+
+    func hasCustomArtwork(for trackURL: URL) -> Bool {
+        FileManager.default.fileExists(atPath: fileURL(for: trackURL).path)
+    }
+
+    func artwork(for trackURL: URL) -> UIImage? {
+        let key = trackURL.lastPathComponent
+        if let cached = cache[key] { return cached }
+        guard let data = try? Data(contentsOf: fileURL(for: trackURL)),
+              let image = UIImage(data: data)
+        else { return nil }
+        cache[key] = image
+        return image
+    }
+
+    func setArtwork(_ image: UIImage, for trackURL: URL) {
+        guard let data = image.jpegData(compressionQuality: 0.85) else { return }
+        try? data.write(to: fileURL(for: trackURL), options: .atomic)
+        cache[trackURL.lastPathComponent] = image
+        objectWillChange.send()
+    }
+
+    func removeArtwork(for trackURL: URL) {
+        try? FileManager.default.removeItem(at: fileURL(for: trackURL))
+        cache.removeValue(forKey: trackURL.lastPathComponent)
+        objectWillChange.send()
+    }
+}
+
 class MusicManager: NSObject, ObservableObject {
     static let shared = MusicManager()
     
@@ -466,6 +565,8 @@ class MusicManager: NSObject, ObservableObject {
         setupRemoteCommands()
         loadTracksFromDisk()
         setupVolumeObservation()
+        setupInterruptionObserving()
+        _ = PhoneConnectivityManager.shared
         
         DispatchQueue.main.async {
             self.syncVolumeWithCurrentMode()
@@ -498,6 +599,12 @@ class MusicManager: NSObject, ObservableObject {
                     if key == .commonKeyTitle { title = item.stringValue ?? title }
                     if key == .commonKeyArtist { artist = item.stringValue ?? artist }
                 }
+
+                if let override = TrackMetadataManager.shared.override(for: url) {
+                    title = override.title
+                    artist = override.artist
+                }
+
                 loadedTracks.append(Track(url: url, title: title, artist: artist))
             }
             
@@ -508,6 +615,65 @@ class MusicManager: NSObject, ObservableObject {
         } catch { print("Disk error: \(error)") }
     }
     
+    /// Возвращает название и исполнителя, прочитанные напрямую из тегов файла (без пользовательских правок)
+    func originalMetadata(for url: URL) -> (title: String, artist: String) {
+        let asset = AVAsset(url: url)
+        var title = url.lastPathComponent
+        var artist = "Локальный файл"
+        for item in asset.metadata {
+            guard let key = item.commonKey else { continue }
+            if key == .commonKeyTitle { title = item.stringValue ?? title }
+            if key == .commonKeyArtist { artist = item.stringValue ?? artist }
+        }
+        return (title, artist)
+    }
+
+    /// Сохраняет отредактированные метаданные (название/исполнитель) для трека и обновляет UI
+    func updateMetadata(title: String, artist: String, for url: URL) {
+        TrackMetadataManager.shared.setMetadata(title: title, artist: artist, for: url)
+        loadTracksFromDisk()
+
+        if audioPlayer?.url == url {
+            let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedArtist = artist.trimmingCharacters(in: .whitespacesAndNewlines)
+            currentTitle = trimmedTitle.isEmpty ? url.lastPathComponent : trimmedTitle
+            currentArtist = trimmedArtist.isEmpty ? "Локальный файл" : trimmedArtist
+            updateNowPlaying()
+        }
+    }
+
+    /// Сбрасывает пользовательские метаданные обратно к исходным тегам файла
+    func resetMetadata(for url: URL) {
+        TrackMetadataManager.shared.resetMetadata(for: url)
+        loadTracksFromDisk()
+
+        if audioPlayer?.url == url {
+            let original = originalMetadata(for: url)
+            currentTitle = original.title
+            currentArtist = original.artist
+            updateNowPlaying()
+        }
+    }
+
+    /// Сохраняет пользовательскую обложку для трека и обновляет UI, если он играет сейчас
+    func updateArtwork(_ image: UIImage, for url: URL) {
+        ArtworkManager.shared.setArtwork(image, for: url)
+        if audioPlayer?.url == url {
+            currentArtwork = image
+            gradientColors = image.extractGradientColors()
+            updateNowPlaying()
+        }
+    }
+
+    /// Удаляет пользовательскую обложку и возвращается к обложке из тегов файла (если есть)
+    func removeCustomArtwork(for url: URL) {
+        ArtworkManager.shared.removeArtwork(for: url)
+        if audioPlayer?.url == url {
+            fetchArtwork(for: url)
+            updateNowPlaying()
+        }
+    }
+
     func importTracks(from urls: [URL]) {
         let fileManager = FileManager.default
         guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
@@ -635,20 +801,39 @@ class MusicManager: NSObject, ObservableObject {
         } catch { print("Play error: \(error)") }
     }
 
+    /// Гарантированно запускает воспроизведение (в отличие от playPause не переключает, а именно включает)
+    func resume() {
+        guard audioPlayer?.isPlaying != true else {
+            updateNowPlaying() // на случай, если реальное состояние уже совпадает, а система разошлась
+            return
+        }
+        // Fix: restart track from 0 if it's over
+        if currentTime >= trackDuration - 0.5 && trackDuration > 0 {
+            seek(to: 0)
+        }
+        audioPlayer?.play()
+        isPlaying = true
+        startTimer()
+        updateNowPlaying()
+    }
+
+    /// Гарантированно ставит на паузу (в отличие от playPause не переключает, а именно останавливает)
+    func pause() {
+        guard audioPlayer?.isPlaying == true else {
+            updateNowPlaying()
+            return
+        }
+        audioPlayer?.pause()
+        isPlaying = false
+        updateNowPlaying()
+    }
+
     func playPause() {
         if audioPlayer?.isPlaying == true {
-            audioPlayer?.pause()
-            isPlaying = false
+            pause()
         } else {
-            // Fix: restart track from 0 if it's over
-            if currentTime >= trackDuration - 0.5 && trackDuration > 0 {
-                seek(to: 0)
-            }
-            audioPlayer?.play()
-            isPlaying = true
-            startTimer()
+            resume()
         }
-        updateNowPlaying()
     }
 
     func nextTrack() {
@@ -673,14 +858,39 @@ class MusicManager: NSObject, ObservableObject {
 
     private func startTimer() {
         timer?.cancel()
+        var tickCount = 0
         timer = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect().sink { [weak self] _ in
-            PlaybackTime.shared.currentTime = self?.audioPlayer?.currentTime ?? 0
+            guard let self = self else { return }
+            PlaybackTime.shared.currentTime = self.audioPlayer?.currentTime ?? 0
+
+            // Раз в секунду сверяем реальное состояние плеера с тем, что показывает системе.
+            // Это подстраховка на случай, если прерывание/смена маршрута звука не были отловлены
+            // явным обработчиком — лок-скрин и центр управления не должны "застревать" на паузе.
+            tickCount += 1
+            if tickCount % 20 == 0 {
+                self.syncNowPlayingIfNeeded()
+            }
         }
     }
 
+    private func syncNowPlayingIfNeeded() {
+        let actuallyPlaying = audioPlayer?.isPlaying ?? false
+        if actuallyPlaying != isPlaying {
+            isPlaying = actuallyPlaying
+        }
+        updateNowPlaying()
+    }
+
     private func fetchArtwork(for url: URL) {
-        let asset = AVAsset(url: url)
         self.currentArtwork = nil
+
+        if let custom = ArtworkManager.shared.artwork(for: url) {
+            self.currentArtwork = custom
+            self.gradientColors = custom.extractGradientColors()
+            return
+        }
+
+        let asset = AVAsset(url: url)
         for item in asset.metadata where item.commonKey == .commonKeyArtwork {
             if let data = item.dataValue, let img = UIImage(data: data) {
                 self.currentArtwork = img
@@ -708,14 +918,80 @@ class MusicManager: NSObject, ObservableObject {
         }
         
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        // Помимо словаря nowPlayingInfo, система также ориентируется на playbackState —
+        // без него лок-скрин/центр управления иногда "застревают" на паузе после прерываний.
+        MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
     }
 
     func setupRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
-        center.playCommand.addTarget { _ in self.playPause(); return .success }
-        center.pauseCommand.addTarget { _ in self.playPause(); return .success }
-        center.nextTrackCommand.addTarget { _ in self.nextTrack(); return .success }
-        center.previousTrackCommand.addTarget { _ in self.prevTrack(); return .success }
+        // Явно play/pause, а не toggle: если система уже разошлась с реальным состоянием,
+        // нажатие "play" должно гарантированно запускать воспроизведение (и наоборот),
+        // а не переключать в случайную сторону.
+        center.playCommand.addTarget { [weak self] _ in
+            self?.resume()
+            return .success
+        }
+        center.pauseCommand.addTarget { [weak self] _ in
+            self?.pause()
+            return .success
+        }
+        center.nextTrackCommand.addTarget { [weak self] _ in self?.nextTrack(); return .success }
+        center.previousTrackCommand.addTarget { [weak self] _ in self?.prevTrack(); return .success }
+    }
+    
+    /// Слушает прерывания аудиосессии (звонки, Siri, будильники, другие приложения) и смену
+    /// маршрута звука (наушники/AirPlay), чтобы состояние приложения и системный плеер не расходились.
+    private func setupInterruptionObserving() {
+        NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)
+            .sink { [weak self] notification in
+                self?.handleInterruption(notification)
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)
+            .sink { [weak self] _ in
+                self?.syncNowPlayingIfNeeded()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func handleInterruption(_ notification: Notification) {
+        guard let info = notification.userInfo,
+              let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue)
+        else { return }
+
+        switch type {
+        case .began:
+            // Система сама остановила звук (звонок, Siri и т.п.) — синхронизируем состояние сразу,
+            // не дожидаясь периодической проверки.
+            isPlaying = false
+            updateNowPlaying()
+
+        case .ended:
+            var shouldResume = false
+            if let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt {
+                shouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume)
+            }
+
+            do {
+                try AVAudioSession.sharedInstance().setActive(true)
+            } catch {
+                print("Не удалось повторно активировать аудиосессию: \(error)")
+            }
+
+            if shouldResume {
+                audioPlayer?.play()
+                isPlaying = true
+            } else {
+                isPlaying = false
+            }
+            updateNowPlaying()
+
+        @unknown default:
+            break
+        }
     }
     
     private func applyVolumeChange() {
@@ -1320,6 +1596,153 @@ struct LyricsEditorView: View {
     }
 }
 
+// MARK: - Редактор метаданных трека
+struct MetadataEditorView: View {
+    @Environment(\.dismiss) var dismiss
+    @AppStorage("appTheme") private var appTheme: AppTheme = .system
+    @ObservedObject var manager = MusicManager.shared
+    @ObservedObject var metadataManager = TrackMetadataManager.shared
+    @ObservedObject var artworkManager = ArtworkManager.shared
+
+    let trackURL: URL
+
+    @State private var editedTitle: String = ""
+    @State private var editedArtist: String = ""
+    @State private var previewArtwork: UIImage? = nil
+    @State private var showResetAlert = false
+    @State private var showImagePicker = false
+
+    private var isSaveDisabled: Bool {
+        editedTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Обложка")) {
+                    HStack(spacing: 16) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.15))
+                            if let image = previewArtwork {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            } else {
+                                Image(systemName: "music.note")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .frame(width: 60, height: 60)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .clipped()
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            Button(action: { showImagePicker = true }) {
+                                Label("Выбрать из галереи", systemImage: "photo")
+                            }
+                            if artworkManager.hasCustomArtwork(for: trackURL) {
+                                Button(role: .destructive, action: removeArtwork) {
+                                    Label("Удалить обложку", systemImage: "trash")
+                                }
+                            }
+                        }
+                        .font(.subheadline)
+                        Spacer()
+                    }
+                }
+
+                Section(header: Text("Метаданные трека")) {
+                    TextField("Название", text: $editedTitle)
+                    TextField("Исполнитель", text: $editedArtist)
+                }
+
+                Section(header: Text("Файл")) {
+                    InfoRow(title: "Имя файла", value: trackURL.lastPathComponent)
+                    InfoRow(title: "Формат", value: trackURL.pathExtension.uppercased())
+                }
+
+                if metadataManager.hasOverride(for: trackURL) {
+                    Section {
+                        Button(role: .destructive, action: { showResetAlert = true }) {
+                            Label("Сбросить к оригинальным данным", systemImage: "arrow.counterclockwise")
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Редактировать метаданные")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Отмена") { dismiss() }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: saveAndDismiss) {
+                        Text("Сохранить").fontWeight(.bold)
+                    }
+                    .disabled(isSaveDisabled)
+                }
+            }
+            .alert("Сбросить метаданные?", isPresented: $showResetAlert) {
+                Button("Отмена", role: .cancel) {}
+                Button("Сбросить", role: .destructive) {
+                    manager.resetMetadata(for: trackURL)
+                    let original = manager.originalMetadata(for: trackURL)
+                    editedTitle = original.title
+                    editedArtist = original.artist
+                    dismiss()
+                }
+            } message: {
+                Text("Название и исполнитель вернутся к значениям, прочитанным из файла.")
+            }
+            .sheet(isPresented: $showImagePicker) {
+                ImagePicker { image in
+                    previewArtwork = image
+                    manager.updateArtwork(image, for: trackURL)
+                }
+            }
+        }
+        .onAppear {
+            if let override = metadataManager.override(for: trackURL) {
+                editedTitle = override.title
+                editedArtist = override.artist
+            } else {
+                let original = manager.originalMetadata(for: trackURL)
+                editedTitle = original.title
+                editedArtist = original.artist
+            }
+            loadPreviewArtwork()
+        }
+        .preferredColorScheme(appTheme.colorScheme)
+    }
+
+    private func saveAndDismiss() {
+        manager.updateMetadata(title: editedTitle, artist: editedArtist, for: trackURL)
+        dismiss()
+    }
+
+    private func removeArtwork() {
+        manager.removeCustomArtwork(for: trackURL)
+        loadPreviewArtwork()
+    }
+
+    private func loadPreviewArtwork() {
+        if let custom = artworkManager.artwork(for: trackURL) {
+            previewArtwork = custom
+            return
+        }
+        previewArtwork = nil
+        DispatchQueue.global(qos: .userInitiated).async {
+            let asset = AVAsset(url: trackURL)
+            for item in asset.metadata where item.commonKey == .commonKeyArtwork {
+                if let data = item.dataValue, let img = UIImage(data: data) {
+                    DispatchQueue.main.async { self.previewArtwork = img }
+                    return
+                }
+            }
+        }
+    }
+}
+
 struct TrackRow: View {
     let track: Track
     let isCurrent: Bool
@@ -1372,6 +1795,10 @@ struct TrackRow: View {
         }
         .padding(.vertical, 4)
         .onAppear {
+            if let custom = ArtworkManager.shared.artwork(for: track.url) {
+                self.artwork = custom
+                return
+            }
             DispatchQueue.global(qos: .userInteractive).async {
                 let asset = AVAsset(url: track.url)
                 for item in asset.metadata where item.commonKey == .commonKeyArtwork {
@@ -2021,6 +2448,7 @@ struct FullPlayerView: View {
     @State private var showShareSheet = false
     @State private var showLyrics = false
     @State private var showLyricsEditor = false
+    @State private var showMetadataEditor = false
     
     @State private var isImmersiveLyrics = false
     @State private var idleTask: DispatchWorkItem? = nil
@@ -2187,6 +2615,13 @@ struct FullPlayerView: View {
                                     .padding(24)
                                     .padding(.top, isSmall ? 0 : 10)
                             }
+                        } else if showLyrics && !lyrics.isEmpty {
+                            Button(action: { showLyricsEditor = true }) {
+                                Image(systemName: "pencil.circle.fill")
+                                    .font(.system(size: 26))
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .padding(10)
+                            }
                         }
                     }
                     .gesture(
@@ -2225,9 +2660,12 @@ struct FullPlayerView: View {
                                     Button(action: {
                                         if manager.currentTrack != nil { showShareSheet = true }
                                     }) { Label("Поделиться", systemImage: "square.and.arrow.up") }
-                                    if showLyrics {
-                                        Button(action: { showLyricsEditor = true }) { Label("Редактировать текст", systemImage: "pencil") }
-                                    }
+                                    Button(action: {
+                                        if manager.currentTrack != nil { showMetadataEditor = true }
+                                    }) { Label("Редактировать метаданные", systemImage: "tag") }
+                                    Button(action: {
+                                        if manager.currentTrack != nil { showLyricsEditor = true }
+                                    }) { Label("Редактировать текст", systemImage: "pencil") }
                                 } label: {
                                     Image(systemName: "ellipsis.circle.fill")
                                         .font(.system(size: 24))
@@ -2336,6 +2774,11 @@ struct FullPlayerView: View {
         .sheet(isPresented: $showLyricsEditor) {
             if let track = manager.currentTrack {
                 LyricsEditorView(trackURL: track.url, trackTitle: track.title, trackArtist: track.artist)
+            }
+        }
+        .sheet(isPresented: $showMetadataEditor) {
+            if let track = manager.currentTrack {
+                MetadataEditorView(trackURL: track.url)
             }
         }
         .onChange(of: manager.currentTrackIndex) { _ in
@@ -2479,4 +2922,41 @@ struct ActivityViewController: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: UIViewControllerRepresentableContext<ActivityViewController>) {}
+}
+
+// MARK: - Выбор изображения из галереи (для пользовательской обложки трека)
+struct ImagePicker: UIViewControllerRepresentable {
+    var onImagePicked: (UIImage) -> Void
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var config = PHPickerConfiguration()
+        config.filter = .images
+        config.selectionLimit = 1
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let parent: ImagePicker
+        init(_ parent: ImagePicker) { self.parent = parent }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            picker.dismiss(animated: true)
+            guard let provider = results.first?.itemProvider,
+                  provider.canLoadObject(ofClass: UIImage.self)
+            else { return }
+
+            provider.loadObject(ofClass: UIImage.self) { object, _ in
+                guard let image = object as? UIImage else { return }
+                DispatchQueue.main.async {
+                    self.parent.onImagePicked(image)
+                }
+            }
+        }
+    }
 }
